@@ -55,7 +55,7 @@ TOTAL_COEFFICIENTS = sum(MATIERES_COEFS.values()) # 22
 CLASSES = ["7-ème A", "7-ème B", "8-ème A", "8-ème B", "9-ème Année"]
 
 # ==========================================
-# 3. FONCTIONS DE CALCUL
+# 3. FONCTIONS DE CALCUL ET BASE DE DONNÉES
 # ==========================================
 def calculer_moyenne_matiere(note_classe, note_compo):
     if note_classe is None or note_compo is None:
@@ -109,6 +109,10 @@ def sauvegarder_eleve_db(id_eleve, nom, prenom, classe, notes_dict):
         supabase.table("eleves").update(data).eq("id", id_eleve).execute()
     else:
         supabase.table("eleves").insert(data).execute()
+
+# --- NOUVELLE FONCTION DE SUPPRESSION ---
+def supprimer_eleve_db(id_eleve):
+    supabase.table("eleves").delete().eq("id", id_eleve).execute()
 
 # ==========================================
 # 4. GÉNÉRATION PDF MULTI-BULLETINS (REPORTLAB)
@@ -393,6 +397,20 @@ else:
             if eleves_data:
                 df = pd.DataFrame(eleves_data)
                 st.dataframe(df[["id", "nom", "prenom", "classe", "moyenne", "total_points"]], use_container_width=True)
+                
+                # --- SECTION DE SUPPRESSION ---
+                st.markdown("---")
+                st.subheader("🗑️ Supprimer un élève")
+                
+                eleve_suppr_options = {f"{row['nom']} {row['prenom']} ({row['classe']})": row['id'] for _, row in df.iterrows()}
+                eleve_a_supprimer_label = st.selectbox("Sélectionner l'élève à supprimer :", list(eleve_suppr_options.keys()))
+                
+                id_a_supprimer = eleve_suppr_options[eleve_a_supprimer_label]
+                
+                if st.button("❌ Supprimer définitivement cet élève", type="primary"):
+                    supprimer_eleve_db(id_a_supprimer)
+                    st.success("L'élève a été supprimé de la base de données.")
+                    st.rerun()
             else:
                 st.info("Aucun élève enregistré.")
 
