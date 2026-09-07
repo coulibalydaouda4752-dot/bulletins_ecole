@@ -19,7 +19,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 # 1. CONFIGURATION DE LA PAGE & SUPABASE
 # ==========================================
 st.set_page_config(
-    page_title="Gestion des Bulletins - École Privée Diaratigui COULIBALY ",
+    page_title="Gestion des Bulletins - École Privée Diaratigui COULIBALY",
     page_icon="🎓",
     layout="wide"
 )
@@ -247,6 +247,7 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
 
         header_right_text = f"ANNÉE SCOLAIRE : {annee_scolaire}<br/><font color='#1E3A8A'><b>{trimestre}</b></font>"
 
+        # En-tête avec COULIBALY en majuscule
         header_data = [
             [
                 Paragraph("CAP : Kalaban-Coro<br/><b>Ecole Privée : Diaratigui COULIBALY</b><br/>Classe : " + str(eleve_obj['classe']), style_header_left),
@@ -346,10 +347,11 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
         story.append(Paragraph(f"<b>{mention}</b>", style_body_bold))
         story.append(Paragraph("<b>Appréciation</b>", style_body))
         story.append(Paragraph(f"<b>{apprec_gen} !</b>", style_body_bold))
-        story.append(Spacer(1, 10))
-
+        
+        # Réduction de l'espace avant la signature pour la remonter et laisser de la place au tampon
+        story.append(Spacer(1, 2))
         story.append(Paragraph("Signature du directeur", style_header_right))
-        story.append(Spacer(1, 15))
+        story.append(Spacer(1, 45)) # Espace disponible sous la signature pour le cachet
 
         citation = CITATIONS_EDUCATIVES[i % len(CITATIONS_EDUCATIVES)]
         t_citation = Table([[Paragraph(f"💡 <i>{citation}</i>", style_citation)]], colWidths=[530])
@@ -444,7 +446,7 @@ if mode_mobile:
 
 else:
     st.sidebar.title("🏛️ Administration Centralisée")
-    st.sidebar.write("École Privée Diaratigui Coulibaly")
+    st.sidebar.write("École Privée Diaratigui COULIBALY")
 
     st.sidebar.markdown("---")
     st.sidebar.subheader("⚙️ Configuration Bulletins")
@@ -682,7 +684,7 @@ else:
             <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: bold; margin-bottom: 15px;">
                 <div style="width: 38%; text-align: left; line-height: 1.4;">
                     CAP : Kalaban-Coro<br>
-                    Ecole Privée : Diaratigui Coulibaly<br>
+                    Ecole Privée : Diaratigui COULIBALY<br>
                     Classe : {eleve_obj['classe']}
                 </div>
                 <div style="width: 24%; text-align: center;">
@@ -719,61 +721,60 @@ else:
                 </thead>
                 <tbody>
                     {rows_html}
-                    <tr style="border-top: 2px solid #000; font-weight: bold; background-color: #f9f9f9;">
-                        <td style="border-right: 1px solid #000; padding: 6px;">Total</td>
-                        <td style="border-right: 1px solid #000;"></td>
-                        <td style="border-right: 1px solid #000;"></td>
-                        <td style="border-right: 1px solid #000;"></td>
-                        <td style="border-right: 1px solid #000; text-align: center; padding: 6px;">{TOTAL_COEFFICIENTS}</td>
-                        <td style="border-right: 1px solid #000; text-align: center; padding: 6px;">{eleve_obj['total_points']:.2f}</td>
-                        <td></td>
+                    <tr style="border-top: 2px solid #000; font-weight: bold; background-color: #fdfdfd;">
+                        <td style="padding: 6px 8px;">Total</td>
+                        <td style="border-left: 1px solid #ccc;"></td>
+                        <td style="border-left: 1px solid #ccc;"></td>
+                        <td style="border-left: 1px solid #ccc;"></td>
+                        <td style="text-align: center; padding: 6px; border-left: 1px solid #ccc;">{TOTAL_COEFFICIENTS}</td>
+                        <td style="text-align: center; padding: 6px; border-left: 1px solid #ccc;">{eleve_obj['total_points']:.2f}</td>
+                        <td style="border-left: 1px solid #ccc;"></td>
                     </tr>
                 </tbody>
             </table>
 
-            <div style="margin-top: 25px; font-size: 14px; line-height: 1.8;">
+            <div style="margin-top: 20px; font-size: 14px; line-height: 1.6;">
                 <div><b>Moyenne :</b> &nbsp;&nbsp;&nbsp;&nbsp; {eleve_obj['moyenne']:.2f} / 20</div>
                 <div><b>Rang :</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {rang_eleve} {suffix_rang} / {len(df_classe)} élèves classés</div>
-                <div style="font-weight: bold; text-transform: uppercase; margin-top: 8px; font-size: 15px;">
-                    {mention}
-                </div>
-                <div style="margin-top: 8px;"><b>Appréciation générale :</b></div>
-                <div style="font-weight: bold; font-size: 15px;">{apprec_generale} !</div>
+                <div style="margin-top: 8px; font-weight: bold;">{mention}</div>
+                <div style="margin-top: 4px;"><b>Appréciation :</b> {apprec_generale} !</div>
             </div>
 
-            <div style="margin-top: 30px; text-align: right; font-weight: bold; font-size: 14px; padding-right: 20px;">
-                Signature du Directeur
+            <!-- Ajustement de la marge haute pour remonter la signature et laisser un espace libre en dessous -->
+            <div style="text-align: right; margin-top: 5px; margin-bottom: 55px; font-weight: bold; font-size: 13px;">
+                Signature du directeur
             </div>
 
-            <div style="margin-top: 35px; border-top: 1px solid #cbd5e1; padding-top: 10px; text-align: center; font-style: italic; font-size: 12px; color: #4b5563;">
+            <div style="margin-top: 20px; border-top: 1px solid #cbd5e1; padding-top: 8px; text-align: center; font-style: italic; font-size: 12px; color: #4b5563;">
                 💡 {citation_apercu}
             </div>
         </div>
-        """).strip()
+        """)
 
         components.html(bulletin_html, height=850, scrolling=True)
 
     elif menu == "5. Historique des Bulletins 📜":
-        st.header("📜 Historique des Bulletins enregistrés")
+        st.header("📜 Historique des Bulletins Archivés")
         
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1:
-            f_annee = st.text_input("Filtrer par année :", value=annee_scolaire_input)
+            annee_h = st.text_input("Filtrer par année", value="")
         with col_f2:
-            f_trimestre = st.selectbox("Filtrer par trimestre :", ["Tous", "1er TRIMESTRE", "2ème TRIMESTRE", "3ème TRIMESTRE"])
+            trimestre_h = st.selectbox("Filtrer par trimestre", ["Tous", "1er TRIMESTRE", "2ème TRIMESTRE", "3ème TRIMESTRE"])
         with col_f3:
-            f_classe = st.selectbox("Filtrer par classe :", ["Toutes"] + CLASSES)
+            classe_h = st.selectbox("Filtrer par classe", ["Toutes"] + CLASSES)
 
-        trim_param = None if f_trimestre == "Tous" else f_trimestre
-        class_param = None if f_classe == "Toutes" else f_classe
+        f_annee = annee_h if annee_h else None
+        f_trimestre = trimestre_h if trimestre_h != "Tous" else None
+        f_classe = classe_h if classe_h != "Toutes" else None
 
-        histo_data = charger_historique_db(annee=f_annee, trimestre=trim_param, classe=class_param)
+        historique_data = charger_historique_db(annee=f_annee, trimestre=f_trimestre, classe=f_classe)
 
-        if histo_data:
-            df_histo = pd.DataFrame(histo_data)
+        if historique_data:
+            df_hist = pd.DataFrame(historique_data)
             st.dataframe(
-                df_histo[["annee_scolaire", "trimestre", "classe", "nom", "prenom", "rang", "moyenne", "total_points", "created_at"]],
+                df_hist[["annee_scolaire", "trimestre", "classe", "nom", "prenom", "rang", "total_points", "moyenne", "created_at"]],
                 use_container_width=True
             )
         else:
-            st.info("Aucun bulletin archivé ne correspond aux critères sélectionnés.")
+            st.info("Aucun historique trouvé pour ces critères.")
