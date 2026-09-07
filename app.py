@@ -92,8 +92,18 @@ CITATIONS_EDUCATIVES = [
 ]
 
 # ==========================================
-# 3. FONCTIONS DE CALCUL ET BASE DE DONNÉES
+# 3. FONCTIONS DE CALCUL ET FORMATAGE
 # ==========================================
+def fmt_num(val, decimals=2):
+    """ Formate un nombre en remplaçant le point décimal par une virgule. """
+    if val is None or val == "":
+        return ""
+    try:
+        formatted = f"{float(val):.{decimals}f}"
+        return formatted.replace('.', ',')
+    except (ValueError, TypeError):
+        return str(val)
+
 def calculer_moyenne_matiere(note_classe, note_compo):
     if note_classe is None or note_compo is None:
         return 0.0
@@ -247,7 +257,6 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
 
         header_right_text = f"ANNÉE SCOLAIRE : {annee_scolaire}<br/><font color='#1E3A8A'><b>{trimestre}</b></font>"
 
-        # En-tête avec COULIBALY en majuscule
         header_data = [
             [
                 Paragraph("CAP : Kalaban-Coro<br/><b>Ecole Privée : Diaratigui COULIBALY</b><br/>Classe : " + str(eleve_obj['classe']), style_header_left),
@@ -287,14 +296,14 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
             nc = m_data.get("classe")
             np = m_data.get("compo")
 
-            txt_nc = f"{float(nc):.2f}" if nc is not None else ""
-            txt_np = f"{float(np):.2f}" if np is not None else ""
+            txt_nc = fmt_num(nc) if nc is not None else ""
+            txt_np = fmt_num(np) if np is not None else ""
 
             if nc is not None and np is not None:
                 moy_m = calculer_moyenne_matiere(nc, np)
                 pts = round(moy_m * coef, 2)
-                txt_moy = f"{moy_m:.2f}"
-                txt_pts = f"{pts:.2f}"
+                txt_moy = fmt_num(moy_m)
+                txt_pts = fmt_num(pts)
                 apprec_mat = attribuer_appreciation(moy_m)
             else:
                 txt_moy = ""
@@ -317,7 +326,7 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
             Paragraph("", style_cell),
             Paragraph("", style_cell),
             Paragraph(str(TOTAL_COEFFICIENTS), style_cell_center_bold),
-            Paragraph(f"{eleve_obj['total_points']:.2f}", style_cell_center_bold),
+            Paragraph(fmt_num(eleve_obj['total_points']), style_cell_center_bold),
             Paragraph("", style_cell)
         ])
 
@@ -341,17 +350,15 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
         else:
             mention = "PEUT MIEUX FAIRE"
 
-        story.append(Paragraph(f"<b>Moyenne :</b> &nbsp;&nbsp;&nbsp;&nbsp; {moy_gen:.2f} / 20", style_body))
+        story.append(Paragraph(f"<b>Moyenne :</b> &nbsp;&nbsp;&nbsp;&nbsp; {fmt_num(moy_gen)} / 20", style_body))
         story.append(Paragraph(f"<b>Rang :</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {rang} {suffix_rang} / {total_eleves} élèves classés", style_body))
         story.append(Spacer(1, 4))
         story.append(Paragraph(f"<b>{mention}</b>", style_body_bold))
-        story.append(Paragraph("<b>Appréciation</b>", style_body))
-        story.append(Paragraph(f"<b>{apprec_gen} !</b>", style_body_bold))
+        story.append(Paragraph(f"<b>Appréciation :</b> {apprec_gen} !", style_body))
         
-        # Réduction de l'espace avant la signature pour la remonter et laisser de la place au tampon
-        story.append(Spacer(1, 2))
+        story.append(Spacer(1, -15))
         story.append(Paragraph("Signature du directeur", style_header_right))
-        story.append(Spacer(1, 45)) # Espace disponible sous la signature pour le cachet
+        story.append(Spacer(1, 60))
 
         citation = CITATIONS_EDUCATIVES[i % len(CITATIONS_EDUCATIVES)]
         t_citation = Table([[Paragraph(f"💡 <i>{citation}</i>", style_citation)]], colWidths=[530])
@@ -426,7 +433,7 @@ if mode_mobile:
             
             if nc is not None and np is not None:
                 moy_m = calculer_moyenne_matiere(nc, np)
-                st.caption(f"Moyenne : {moy_m:.2f} / 20")
+                st.caption(f"Moyenne : {fmt_num(moy_m)} / 20")
             else:
                 st.caption("Moyenne : -- / 20")
                 
@@ -556,7 +563,7 @@ else:
                 
                 if nc is not None and np is not None:
                     moy_m = calculer_moyenne_matiere(nc, np)
-                    c4.write(f"**{moy_m:.2f}**")
+                    c4.write(f"**{fmt_num(moy_m)}**")
                 else:
                     c4.write("--")
                 
@@ -649,14 +656,14 @@ else:
             nc = m_data.get("classe")
             np = m_data.get("compo")
             
-            txt_nc = f"{float(nc):.2f}" if nc is not None else ""
-            txt_np = f"{float(np):.2f}" if np is not None else ""
+            txt_nc = fmt_num(nc) if nc is not None else ""
+            txt_np = fmt_num(np) if np is not None else ""
             
             if nc is not None and np is not None:
                 moy_m = calculer_moyenne_matiere(nc, np)
                 pts = round(moy_m * coef, 2)
-                txt_moy = f"{moy_m:.2f}"
-                txt_pts = f"{pts:.2f}"
+                txt_moy = fmt_num(moy_m)
+                txt_pts = fmt_num(pts)
                 apprec_mat = attribuer_appreciation(moy_m)
             else:
                 txt_moy = ""
@@ -727,21 +734,20 @@ else:
                         <td style="border-left: 1px solid #ccc;"></td>
                         <td style="border-left: 1px solid #ccc;"></td>
                         <td style="text-align: center; padding: 6px; border-left: 1px solid #ccc;">{TOTAL_COEFFICIENTS}</td>
-                        <td style="text-align: center; padding: 6px; border-left: 1px solid #ccc;">{eleve_obj['total_points']:.2f}</td>
+                        <td style="text-align: center; padding: 6px; border-left: 1px solid #ccc;">{fmt_num(eleve_obj['total_points'])}</td>
                         <td style="border-left: 1px solid #ccc;"></td>
                     </tr>
                 </tbody>
             </table>
 
             <div style="margin-top: 20px; font-size: 14px; line-height: 1.6;">
-                <div><b>Moyenne :</b> &nbsp;&nbsp;&nbsp;&nbsp; {eleve_obj['moyenne']:.2f} / 20</div>
+                <div><b>Moyenne :</b> &nbsp;&nbsp;&nbsp;&nbsp; {fmt_num(eleve_obj['moyenne'])} / 20</div>
                 <div><b>Rang :</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {rang_eleve} {suffix_rang} / {len(df_classe)} élèves classés</div>
                 <div style="margin-top: 8px; font-weight: bold;">{mention}</div>
                 <div style="margin-top: 4px;"><b>Appréciation :</b> {apprec_generale} !</div>
             </div>
 
-            <!-- Ajustement de la marge haute pour remonter la signature et laisser un espace libre en dessous -->
-            <div style="text-align: right; margin-top: 5px; margin-bottom: 55px; font-weight: bold; font-size: 13px;">
+            <div style="text-align: right; margin-top: -30px; margin-bottom: 70px; font-weight: bold; font-size: 13px;">
                 Signature du directeur
             </div>
 
