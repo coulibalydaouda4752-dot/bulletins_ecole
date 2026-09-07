@@ -1,4 +1,5 @@
 import io
+import os
 import json
 import pandas as pd
 import streamlit as st
@@ -55,7 +56,6 @@ MATIERES_COEFS = {
 TOTAL_COEFFICIENTS = sum(MATIERES_COEFS.values()) # 22
 CLASSES = ["7-ème A", "7-ème B", "8-ème A", "8-ème B", "9-ème Année"]
 
-# Banque de 30 citations éducatives et inspirantes
 CITATIONS_EDUCATIVES = [
     "« L'éducation est l'arme la plus puissante qu'on puisse utiliser pour changer le monde. » – Nelson Mandela",
     "« Le savoir est la seule matière qui s'accroît quand on la partage. » – Socrate",
@@ -150,7 +150,6 @@ def supprimer_eleve_db(id_eleve):
 
 # --- FONCTIONS HISTORIQUE DE BULLETINS ---
 def archiver_bulletins_db(df_classe, annee_scolaire, trimestre):
-    """Enregistre les bulletins d'une classe dans l'historique."""
     enregistrements = []
     for i, (_, eleve) in enumerate(df_classe.iterrows()):
         rang = i + 1
@@ -175,11 +174,10 @@ def archiver_bulletins_db(df_classe, annee_scolaire, trimestre):
         }
         enregistrements.append(rec)
     
-    # Insertion dans Supabase
     try:
         supabase.table("historique_bulletins").insert(enregistrements).execute()
     except Exception as e:
-        st.warning(f"Note : L'archivage dans l'historique a rencontré un avertissement : {e}")
+        st.warning(f"Note : Archivage : {e}")
 
 def charger_historique_db(annee=None, trimestre=None, classe=None):
     query = supabase.table("historique_bulletins").select("*")
@@ -210,7 +208,6 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
     story = []
     styles = getSampleStyleSheet()
 
-    # Styles personnalisés
     style_header_left = ParagraphStyle('HLeft', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=12)
     style_header_right = ParagraphStyle('HRight', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=12, alignment=TA_RIGHT)
     style_title = ParagraphStyle('Title', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=14, leading=17, alignment=TA_CENTER, textColor=colors.HexColor('#0F2C59'))
@@ -237,11 +234,14 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
             except json.JSONDecodeError:
                 notes_actuelles = {}
 
-        # --- EN-TÊTE 3 COLONNES AVEC LOGO ---
+        # --- GESTION SÉCURISÉE DU LOGO ---
         LOGO_PATH = "logo.png"
-        try:
-            logo_img = Image(LOGO_PATH, width=50, height=50)
-        except Exception:
+        if os.path.exists(LOGO_PATH):
+            try:
+                logo_img = Image(LOGO_PATH, width=50, height=50)
+            except Exception:
+                logo_img = Paragraph("<font size=12 color='#0F2C59'><b>EPDC</b></font>", style_cell_center_bold)
+        else:
             logo_img = Paragraph("<font size=12 color='#0F2C59'><b>EPDC</b></font>", style_cell_center_bold)
 
         header_right_text = f"ANNÉE SCOLAIRE : {annee_scolaire}<br/><font color='#1E3A8A'><b>{trimestre}</b></font>"
@@ -261,16 +261,13 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
         story.append(t_header)
         story.append(Spacer(1, 10))
 
-        # Titre Bulletin
         story.append(Paragraph(f"<u>BULLETIN DE NOTES - {trimestre}</u>", style_title))
         story.append(Spacer(1, 10))
 
-        # Infos Élève
         story.append(Paragraph(f"<b>Prénom de L'élève :</b> {eleve_obj['prenom']}", style_body))
         story.append(Paragraph(f"<b>Nom de l'élève :</b> {eleve_obj['nom']}", style_body))
         story.append(Spacer(1, 10))
 
-        # Tableau des Notes
         table_data = [
             [
                 Paragraph("Matière", style_cell_center_bold),
@@ -312,7 +309,6 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
                 Paragraph(apprec_mat, style_cell)
             ])
 
-        # Ligne Total
         table_data.append([
             Paragraph("Total", style_cell_bold),
             Paragraph("", style_cell),
@@ -333,7 +329,6 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
         story.append(t_notes)
         story.append(Spacer(1, 10))
 
-        # Bilan de fin de bulletin
         moy_gen = float(eleve_obj['moyenne'])
         apprec_gen = attribuer_appreciation(moy_gen)
         
@@ -352,11 +347,9 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
         story.append(Paragraph(f"<b>{apprec_gen} !</b>", style_body_bold))
         story.append(Spacer(1, 10))
 
-        # Signature
         story.append(Paragraph("Signature du directeur", style_header_right))
         story.append(Spacer(1, 15))
 
-        # --- PIED DE PAGE : CITATION ÉDUCATIVE VARIABLE ---
         citation = CITATIONS_EDUCATIVES[i % len(CITATIONS_EDUCATIVES)]
         t_citation = Table([[Paragraph(f"💡 <i>{citation}</i>", style_citation)]], colWidths=[530])
         t_citation.setStyle(TableStyle([
@@ -368,7 +361,6 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
         ]))
         story.append(t_citation)
 
-        # Saut de page pour le bulletin suivant (sauf le dernier)
         if i < total_eleves - 1:
             story.append(PageBreak())
 
@@ -384,9 +376,6 @@ query_params = st.query_params
 mode_mobile = query_params.get("mode") == "saisie"
 
 if mode_mobile:
-    # --------------------------------------
-    # A. INTERFACE MOBILE (SAISIE DES NOTES)
-    # --------------------------------------
     st.title("📱 Saisie des Notes")
     st.info("Interface optimisée pour smartphones")
 
@@ -453,13 +442,9 @@ if mode_mobile:
             st.rerun()
 
 else:
-    # --------------------------------------
-    # B. INTERFACE PC (ADMINISTRATION)
-    # --------------------------------------
     st.sidebar.title("🏛️ Administration Centralisée")
     st.sidebar.write("École Privée Diaratigui Coulibaly")
 
-    # BARRE DE CONFIGURATION GÉNÉRALE DU BULLETIN
     st.sidebar.markdown("---")
     st.sidebar.subheader("⚙️ Configuration Bulletins")
     annee_scolaire_input = st.sidebar.text_input("Année Scolaire", value="2025-2026")
@@ -482,7 +467,6 @@ else:
 
     eleves_data = charger_eleves_db()
 
-    # --- MENU 1 : GESTION DES ÉLÈVES ---
     if menu == "1. Gestion des Élèves":
         st.header("👤 Inscription et Gestion des Élèves")
         
@@ -507,7 +491,6 @@ else:
                 df = pd.DataFrame(eleves_data)
                 st.dataframe(df[["id", "nom", "prenom", "classe", "moyenne", "total_points"]], use_container_width=True)
                 
-                # SECTION DE SUPPRESSION D'ÉLÈVES
                 st.markdown("---")
                 st.subheader("🗑️ Supprimer un élève")
                 
@@ -523,7 +506,6 @@ else:
             else:
                 st.info("Aucun élève enregistré.")
 
-    # --- MENU 2 : SAISIE DES NOTES (PC) ---
     elif menu == "2. Saisie des Notes (PC)":
         st.header("📝 Saisie Globale des Notes")
         if not eleves_data:
@@ -588,7 +570,6 @@ else:
                 st.success("Toutes les notes ont été mises à jour !")
                 st.rerun()
 
-    # --- MENU 3 : CLASSEMENT & RÉSULTATS ---
     elif menu == "3. Classement & Résultats":
         st.header("🏆 Classement Général par Classe")
         if not eleves_data:
@@ -611,7 +592,6 @@ else:
                 use_container_width=True
             )
 
-    # --- MENU 4 : IMPRESSION DES BULLETINS ---
     elif menu == "4. Impression des Bulletins":
         st.header("🖨️ Impression des Bulletins")
         if not eleves_data:
@@ -621,7 +601,6 @@ else:
         df_eleves = pd.DataFrame(eleves_data)
         classe_sel = st.selectbox("Classe :", CLASSES, key="imp_cl")
         
-        # Tri automatique par rang
         df_classe = df_eleves[df_eleves["classe"] == classe_sel].sort_values(by="moyenne", ascending=False).reset_index(drop=True)
 
         if df_classe.empty:
@@ -630,7 +609,6 @@ else:
 
         st.markdown("---")
         
-        # TÉLÉCHARGEMENT ET ARCHIVAGE DU PDF
         pdf_data = generer_pdf_bulletins_classe(df_classe, annee_scolaire_input, trimestre_input)
         
         col_btn1, col_btn2 = st.columns([2, 1])
@@ -644,9 +622,8 @@ else:
             )
         
         if btn_dl:
-            # Archivage automatique de la session de génération
             archiver_bulletins_db(df_classe, annee_scolaire_input, trimestre_input)
-            st.success("✅ Bulletins générés et archivés avec succès dans l'historique !")
+            st.success("✅ Bulletins générés et archivés avec succès !")
 
         st.markdown("---")
         st.subheader("Aperçu individuel à l'écran")
@@ -663,7 +640,6 @@ else:
             except json.JSONDecodeError:
                 notes_actuelles = {}
 
-        # Construction des lignes HTML du tableau
         rows_html = ""
         for mat, coef in MATIERES_COEFS.items():
             m_data = notes_actuelles.get(mat, {})
@@ -700,7 +676,6 @@ else:
         suffix_rang = "ère" if rang_eleve == 1 else "ème"
         citation_apercu = CITATIONS_EDUCATIVES[idx_eleve % len(CITATIONS_EDUCATIVES)]
 
-        # Rendu HTML de l'Aperçu
         st.markdown(f"""
         <div style="background-color: #ffffff; color: #000000; padding: 30px; border: 1px solid #ccc; font-family: 'Times New Roman', Times, serif; max-width: 800px; margin: auto;">
             
@@ -777,21 +752,18 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
-    # --- MENU 5 : HISTORIQUE DES BULLETINS ---
     elif menu == "5. Historique des Bulletins 📜":
         st.header("📜 Historique des Bulletins Archivés")
         st.write("Consultez et réimprimez les bulletins générés antérieurement.")
 
-        # Filtres de recherche
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1:
-            f_annee = st.text_input("Filtrer par Année Scolaire (ex: 2025-2026) :", value="")
+            f_annee = st.text_input("Filtrer par Année Scolaire :", value="")
         with col_f2:
             f_trimestre = st.selectbox("Filtrer par Période :", ["Tous", "1er TRIMESTRE", "2ème TRIMESTRE", "3ème TRIMESTRE"])
         with col_f3:
             f_classe = st.selectbox("Filtrer par Classe :", ["Toutes"] + CLASSES)
 
-        # Application des filtres
         p_annee = f_annee if f_annee.strip() != "" else None
         p_trimestre = f_trimestre if f_trimestre != "Tous" else None
         p_classe = f_classe if f_classe != "Toutes" else None
@@ -799,17 +771,15 @@ else:
         historique_records = charger_historique_db(annee=p_annee, trimestre=p_trimestre, classe=p_classe)
 
         if not historique_records:
-            st.info("Aucun bulletin ne correspond à vos critères de recherche dans l'historique.")
+            st.info("Aucun bulletin ne correspond à vos critères de recherche.")
         else:
             df_hist = pd.DataFrame(historique_records)
             st.subheader(f"Bulletins archivés ({len(df_hist)} enregistrement(s))")
 
-            # Affichage synthétique des archives
             df_display = df_hist[["created_at", "annee_scolaire", "trimestre", "classe", "nom", "prenom", "rang", "moyenne"]].copy()
             df_display.columns = ["Date Génération", "Année", "Période", "Classe", "Nom", "Prénom", "Rang", "Moyenne"]
             st.dataframe(df_display, use_container_width=True)
 
-            # Option de ré-impression
             st.markdown("---")
             st.subheader("Ré-imprimer une archive de classe")
             
@@ -819,7 +789,6 @@ else:
             if groupes_labels:
                 groupe_sel_label = st.selectbox("Choisir le lot de bulletins à ré-imprimer :", groupes_labels)
                 
-                # Extraction des informations sélectionnées
                 sel_annee, sel_trim, sel_cl = groupe_sel_label.split(" | ")
                 df_reimprimer = df_hist[
                     (df_hist["annee_scolaire"] == sel_annee) &
