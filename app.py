@@ -1,8 +1,10 @@
 import io
 import os
 import json
+import textwrap
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from datetime import datetime
 from supabase import Client, create_client
 
@@ -234,7 +236,6 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
             except json.JSONDecodeError:
                 notes_actuelles = {}
 
-        # --- GESTION SÉCURISÉE DU LOGO ---
         LOGO_PATH = "logo.png"
         if os.path.exists(LOGO_PATH):
             try:
@@ -669,16 +670,15 @@ else:
                 <td style="text-align: center; padding: 6px; border-left: 1px solid #ccc;">{coef}</td>
                 <td style="text-align: center; padding: 6px; border-left: 1px solid #ccc; font-weight: bold;">{txt_pts}</td>
                 <td style="padding: 6px 8px; border-left: 1px solid #ccc;">{apprec_mat}</td>
-            </tr>
-            """
+            </tr>"""
 
         apprec_generale = attribuer_appreciation(float(eleve_obj['moyenne']))
         suffix_rang = "ère" if rang_eleve == 1 else "ème"
         citation_apercu = CITATIONS_EDUCATIVES[idx_eleve % len(CITATIONS_EDUCATIVES)]
+        mention = "FELICITATIONS !" if eleve_obj['moyenne'] >= 14 else "ENCOURAGEMENTS !" if eleve_obj['moyenne'] >= 12 else "PEUT MIEUX FAIRE"
 
-        bulletin_html = f"""
-        <div style="background-color: #ffffff; color: #000000; padding: 30px; border: 1px solid #ccc; border-radius: 6px; font-family: 'Times New Roman', Times, serif; max-width: 850px; margin: auto;">
-            
+        bulletin_html = textwrap.dedent(f"""
+        <div style="background-color: #ffffff; color: #000000; padding: 25px; border: 1px solid #ccc; border-radius: 6px; font-family: 'Times New Roman', Times, serif; max-width: 800px; margin: auto;">
             <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: bold; margin-bottom: 15px;">
                 <div style="width: 38%; text-align: left; line-height: 1.4;">
                     CAP : Kalaban-Coro<br>
@@ -735,7 +735,7 @@ else:
                 <div><b>Moyenne :</b> &nbsp;&nbsp;&nbsp;&nbsp; {eleve_obj['moyenne']:.2f} / 20</div>
                 <div><b>Rang :</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {rang_eleve} {suffix_rang} / {len(df_classe)} élèves classés</div>
                 <div style="font-weight: bold; text-transform: uppercase; margin-top: 8px; font-size: 15px;">
-                    {"FELICITATIONS !" if eleve_obj['moyenne'] >= 14 else "ENCOURAGEMENTS !" if eleve_obj['moyenne'] >= 12 else "PEUT MIEUX FAIRE"}
+                    {mention}
                 </div>
                 <div style="margin-top: 8px;"><b>Appréciation générale :</b></div>
                 <div style="font-weight: bold; font-size: 15px;">{apprec_generale} !</div>
@@ -748,11 +748,10 @@ else:
             <div style="margin-top: 35px; border-top: 1px solid #cbd5e1; padding-top: 10px; text-align: center; font-style: italic; font-size: 12px; color: #4b5563;">
                 💡 {citation_apercu}
             </div>
-
         </div>
-        """
+        """).strip()
 
-        st.markdown(bulletin_html, unsafe_allow_html=True)
+        components.html(bulletin_html, height=850, scrolling=True)
 
     elif menu == "5. Historique des Bulletins 📜":
         st.header("📜 Historique des Bulletins enregistrés")
