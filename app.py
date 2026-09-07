@@ -19,7 +19,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 # 1. CONFIGURATION DE LA PAGE & SUPABASE
 # ==========================================
 st.set_page_config(
-    page_title="Gestion des Bulletins - École Privée Diaratigui Coulibaly",
+    page_title="Gestion des Bulletins - École Privée Diaratigui COULIBALY ",
     page_icon="🎓",
     layout="wide"
 )
