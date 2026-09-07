@@ -1,384 +1,377 @@
 import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
+import json
 
-# --- CONFIGURATION SUPABASE ---
-SUPABASE_URL = "https://ckjoarpmpptjrqonwbcv.supabase.co"
-SUPABASE_KEY = "sb_publishable_fbdmOrHigq32Sgog-RFhuw_Rcac30bS"
+# ==========================================
+# 1. CONFIGURATION DE LA PAGE & SUPABASE
+# ==========================================
+st.set_page_config(
+    page_title="Gestion des Bulletins - École Privée Diaratigui Coulibaly",
+    page_icon="🎓",
+    layout="wide"
+)
 
+# Initialisation de Supabase
 @st.cache_resource
 def init_supabase() -> Client:
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+    # Récupération des identifiants depuis secrets.toml ou st.secrets
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
 
-supabase = init_supabase()
+try:
+    supabase = init_supabase()
+except Exception as e:
+    st.error("Erreur de connexion à la base de données Supabase. Vérifiez vos secrets.")
+    st.stop()
 
-st.set_page_config(page_title="Gestion des Bulletins - École Privée Diaratigui Coulibaly", layout="wide")
+# ==========================================
+# 2. DONNÉES DE CONFIGURATION (MATIÈRES & COEFS)
+# ==========================================
+MATIERES_COEFS = {
+    "Rédaction / Composition": 2,
+    "Dictée / Questions": 1,
+    "Lecture / Explication": 1,
+    "Étude de texte": 2,
+    "Mathématiques": 4,
+    "Physique - Chimie": 2,
+    "Sciences de la Vie et de la Terre (SVT)": 2,
+    "Histoire - Géographie": 2,
+    "Anglais": 2,
+    "Éducation Civique et Morale (ECM)": 1,
+    "Éducation Physique et Sportive (EPS)": 1,
+    "Dessin / Travaux Pratiques": 1
+}
 
-# --- FONCTIONS BASE DE DONNÉES ---
-def charger_eleves():
-    try:
-        response = supabase.table("eleves").select("*").execute()
-        return response.data
-    except Exception as e:
-        st.error(f"Erreur de connexion à Supabase : {e}")
-        return []
+TOTAL_COEFFICIENTS = sum(MATIERES_COEFS.values()) # 22
 
-def sauvegarder_eleve(id_eleve, nom, prenom, classe, notes, total_points, moyenne):
+CLASSES = ["7-ème A", "7-ème B", "8-ème A", "8-ème B", "9-ème Année"]
+
+# ==========================================
+# 3. FONCTIONS DE CALCUL ET FONCTIONNELLES
+# ==========================================
+def calculer_moyenne_matiere(note_classe, note_compo):
+    """
+    Note Classe /20
+    Note Compo /40
+    Moyenne Matière (/20) = (Note_Classe + Note_Compo) / 3
+    """
+    if note_classe is None or note_compo is None:
+        return 0.0
+    moyenne = (float(note_classe) + float(note_compo)) / 3.0
+    return round(moyenne, 2)
+
+def calculer_bilan_eleve(notes_dict):
+    """
+    Calcule le total des points et la moyenne générale
+    """
+    total_points = 0.0
+    for matiere, coef in MATIERES_COEFS.items():
+        m_notes = notes_dict.get(matiere, {})
+        nc = m_notes.get("classe", 0.0)
+        np = m_notes.get("compo", 0.0)
+        moy_mat = calculer_moyenne_matiere(nc, np)
+        total_points += moy_mat * coef
+        
+    moyenne_generale = total_points / TOTAL_COEFFICIENTS if TOTAL_COEFFICIENTS > 0 else 0.0
+    return round(total_points, 2), round(moyenne_generale, 2)
+
+def attribuer_appreciation(moyenne):
+    if moyenne >= 16:
+        return "Excellent"
+    elif moyenne >= 14:
+        return "Très Bien"
+    elif moyenne >= 12:
+        return "Bien"
+    elif moyenne >= 10:
+        return "Passable"
+    elif moyenne >= 8:
+        return "Insuffisant"
+    else:
+        return "Médiocre"
+
+def charger_eleves_db():
+    response = supabase.table("eleves").select("*").execute()
+    return response.data
+
+def sauvegarder_eleve_db(id_eleve, nom, prenom, classe, notes_dict):
+    total_pts, moy_gen = calculer_bilan_eleve(notes_dict)
     data = {
         "nom": nom,
         "prenom": prenom,
         "classe": classe,
-        "notes": notes,
-        "total_points": total_points,
-        "moyenne": moyenne
+        "notes": notes_dict,
+        "total_points": total_pts,
+        "moyenne": moy_gen
     }
     if id_eleve:
         supabase.table("eleves").update(data).eq("id", id_eleve).execute()
     else:
         supabase.table("eleves").insert(data).execute()
 
-def supprimer_eleve(id_eleve):
-    try:
-        supabase.table("eleves").delete().eq("id", id_eleve).execute()
-        return True
-    except Exception as e:
-        st.error(f"Erreur lors de la suppression : {e}")
-        return False
-
-# --- MATIÈRES AVEC LEURS COEFFICIENTS OFFICIELS ---
-MATIERES = [
-    {"code": "REDACTION", "nom": "Rédaction", "coef": 3},
-    {"code": "DICTEE_QUEST", "nom": "Dictée-Questions", "coef": 2},
-    {"code": "MATH", "nom": "Mathématique", "coef": 3},
-    {"code": "PC", "nom": "Physique-chimie", "coef": 3},
-    {"code": "ANG", "nom": "Anglais", "coef": 2},
-    {"code": "SVT", "nom": "Science Nat", "coef": 2},
-    {"code": "HG", "nom": "Hist-Géo", "coef": 2},
-    {"code": "ECM", "nom": "Ed civ. Morale", "coef": 1},
-    {"code": "EPS", "nom": "Ed Physique", "coef": 1},
-    {"code": "LECTURE", "nom": "Lecture", "coef": 1},
-    {"code": "RECITATION", "nom": "Récitation", "coef": 1},
-    {"code": "CONDUITE", "nom": "Conduite", "coef": 1}
-]
-
-TOTAL_COEFFS = sum(m["coef"] for m in MATIERES) # 22
-
-def obtenir_appreciation(moyenne):
-    if moyenne >= 18:
-        return "Excellent"
-    elif moyenne >= 16:
-        return "Très-bien"
-    elif moyenne >= 14:
-        return "Bien"
-    elif moyenne >= 12:
-        return "Assez-bien"
-    elif moyenne >= 10:
-        return "Passable"
-    elif moyenne >= 8:
-        return "Médiocre"
-    else:
-        return "Faible"
-
-# --- DÉTECTION DU MODE D'ACCÈS ---
+# ==========================================
+# 4. GESTION DU MODE DE NAVIGATION
+# ==========================================
+# Détection automatique du paramètre URL ?mode=saisie
 query_params = st.query_params
-mode_saisie = query_params.get("mode") == "saisie"
+mode_mobile = query_params.get("mode") == "saisie"
 
-# ==========================================
-# 1. MODE MOBILE : SAISIE SIMPLIFIÉE
-# ==========================================
-if mode_saisie:
-    st.title("📲 Espace de Saisie des Notes")
-    st.info("Portail mobile pour les assistants. Enregistrement direct vers la base centrale.")
+if mode_mobile:
+    # --------------------------------------
+    # A. INTERFACE MOBILE (SAISIE DES NOTES)
+    # --------------------------------------
+    st.title("📱 Saisie Rapide des Notes")
+    st.info("Interface optimisée pour smartphones - Assistants & Enseignants")
 
-    eleves_data = charger_eleves()
+    eleves_data = charger_eleves_db()
     if not eleves_data:
-        st.warning("Aucun élève enregistré. Demandez à l'administrateur d'ajouter des élèves.")
-    else:
-        options_eleves = {f"{e['nom'].upper()} {e['prenom']} ({e['classe']})": e for e in eleves_data}
-        choix = st.selectbox("Sélectionner l'élève :", list(options_eleves.keys()))
-        eleve = options_eleves[choix]
+        st.warning("Aucun élève enregistré dans la base de données.")
+        st.stop()
 
-        st.subheader(f"Notes pour : {eleve['nom'].upper()} {eleve['prenom']}")
+    df_eleves = pd.DataFrame(eleves_data)
+    
+    # Sélection de la classe et de l'élève
+    classe_sel = st.selectbox("Sélectionner la classe :", CLASSES)
+    df_filtrer = df_eleves[df_eleves["classe"] == classe_sel]
+
+    if df_filtrer.empty:
+        st.warning(f"Aucun élève inscrit en {classe_sel}.")
+        st.stop()
+
+    eleve_options = {f"{row['nom']} {row['prenom']}": row for _, row in df_filtrer.iterrows()}
+    nom_eleve_sel = st.selectbox("Sélectionner l'élève :", list(eleve_options.keys()))
+    eleve_obj = eleve_options[nom_eleve_sel]
+
+    # Récupération des notes existantes
+    notes_actuelles = eleve_obj.get("notes") or {}
+    if isinstance(notes_actuelles, str):
+        notes_actuelles = json.loads(notes_actuelles)
+
+    st.subheader(f"Élève : {eleve_obj['nom']} {eleve_obj['prenom']}")
+
+    # Choix de la matière
+    matiere_sel = st.selectbox("Choisir la matière :", list(MATIERES_COEFS.keys()))
+    notes_mat = notes_actuelles.get(matiere_sel, {"classe": 0.0, "compo": 0.0})
+
+    with st.form("form_saisie_mobile"):
+        note_cl = st.number_input("Note de Classe (/20) :", min_value=0.0, max_value=20.0, value=float(notes_mat.get("classe", 0.0)), step=0.5)
+        note_co = st.number_input("Note de Composition (/40) :", min_value=0.0, max_value=40.0, value=float(notes_mat.get("compo", 0.0)), step=0.5)
         
-        notes_existantes = eleve.get("notes") or {}
-        nouvelles_notes = {}
-        sum_points_coeff = 0.0
+        moy_preview = calculer_moyenne_matiere(note_cl, note_co)
+        st.write(f"**Moyenne estimée dans cette matière :** {moy_preview} / 20")
 
-        with st.form("form_saisie_mobile"):
-            for m in MATIERES:
-                st.markdown(f"**{m['nom']} (Coeff : {m['coef']})**")
-                col_c, col_e = st.columns(2)
-                
-                val_c_defaut = float(notes_existantes.get(m['code'], {}).get('classe', 10.0))
-                val_e_defaut = float(notes_existantes.get(m['code'], {}).get('compo', 10.0))
+        btn_valider = st.form_submit_button("Enregistrer la note 💾")
 
-                v_classe = col_c.number_input("Note Classe /20", min_value=0.0, max_value=20.0, value=val_c_defaut, step=0.5, key=f"m_{m['code']}_c")
-                v_compo = col_e.number_input("Note Compo /40", min_value=0.0, max_value=40.0, value=val_e_defaut, step=0.5, key=f"m_{m['code']}_e")
+    if btn_valider:
+        notes_actuelles[matiere_sel] = {"classe": note_cl, "compo": note_co}
+        sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], notes_actuelles)
+        st.success(f"Notes enregistrées avec succès pour {matiere_sel} !")
+        st.rerun()
 
-                moy_matiere = ((v_classe / 20.0) + (v_compo / 40.0)) / 3.0 * 20.0
-                moy_coeff = moy_matiere * m['coef']
-                sum_points_coeff += moy_coeff
-
-                nouvelles_notes[m['code']] = {
-                    "classe": v_classe,
-                    "compo": v_compo,
-                    "moyenne": round(moy_matiere, 2),
-                    "moyenne_coeff": round(moy_coeff, 2),
-                    "appreciation": obtenir_appreciation(moy_matiere)
-                }
-
-            moyenne_generale = sum_points_coeff / TOTAL_COEFFS
-
-            submitted = st.form_submit_button("💾 Enregistrer la Saisie")
-            if submitted:
-                sauvegarder_eleve(
-                    id_eleve=eleve["id"],
-                    nom=eleve["nom"],
-                    prenom=eleve["prenom"],
-                    classe=eleve["classe"],
-                    notes=nouvelles_notes,
-                    total_points=round(sum_points_coeff, 2),
-                    moyenne=round(moyenne_generale, 2)
-                )
-                st.success(f"Notes enregistrées ! Moyenne Générale : {moyenne_generale:.2f}/20")
-
-# ==========================================
-# 2. MODE ADMIN CENTRAL (PC)
-# ==========================================
 else:
+    # --------------------------------------
+    # B. INTERFACE PC (ADMINISTRATION COMPLETE)
+    # --------------------------------------
     st.sidebar.title("🏛️ Administration Centralisée")
-    menu = st.sidebar.radio("Navigation :", [
-        "1. Gestion des Élèves",
-        "2. Saisie des Notes (PC)",
-        "3. Classement & Résultats",
-        "4. Impression des Bulletins"
-    ])
+    st.sidebar.write("École Privée Diaratigui Coulibaly")
 
-    # --------------------------------------
-    # MENU 1 : GESTION DES ÉLÈVES
-    # --------------------------------------
+    menu = st.sidebar.radio(
+        "Navigation :",
+        [
+            "1. Gestion des Élèves",
+            "2. Saisie des Notes (PC)",
+            "3. Classement & Résultats",
+            "4. Impression des Bulletins"
+        ]
+    )
+
+    eleves_data = charger_eleves_db()
+
+    # --- MENU 1 : GESTION DES ÉLÈVES ---
     if menu == "1. Gestion des Élèves":
-        st.title("👨‍🎓 Inscription des Élèves")
+        st.header("👤 Inscription et Gestion des Élèves")
         
-        with st.form("ajout_eleve"):
-            c1, c2, c3 = st.columns(3)
-            nom = c1.text_input("Nom de famille").strip()
-            prenom = c2.text_input("Prénom").strip()
-            classe = c3.text_input("Classe", value="7-ème A")
-            btn_ajouter = st.form_submit_button("Ajouter à la base")
-            
-            if btn_ajouter:
-                if nom and prenom:
-                    sauvegarder_eleve(None, nom, prenom, classe, {}, 0.0, 0.0)
-                    st.success(f"Élève {prenom} {nom.upper()} inscrit avec succès !")
-                    st.rerun()
-                else:
-                    st.error("Veuillez remplir le nom et le prénom.")
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            with st.form("form_inscript"):
+                st.subheader("Nouvel Élève")
+                nom = st.text_input("Nom de famille :")
+                prenom = st.text_input("Prénom :")
+                classe = st.selectbox("Classe :", CLASSES)
+                btn_ajouter = st.form_submit_button("Ajouter à la base")
 
-        st.divider()
-        st.subheader("Effectif enregistré")
-        eleves = charger_eleves()
-        if eleves:
-            df = pd.DataFrame(eleves)[["id", "nom", "prenom", "classe", "moyenne", "total_points"]]
-            st.dataframe(df, use_container_width=True)
-
-            # --- PARCELLE DE SUPPRESSION ---
-            st.subheader("🗑️ Supprimer un élève")
-            options_sup = {f"{e['nom'].upper()} {e['prenom']} (ID: {e['id']})": e['id'] for e in eleves}
-            eleve_a_supprimer = st.selectbox("Sélectionner l'élève à retirer :", list(options_sup.keys()))
-            
-            if st.button("❌ Supprimer définitivement cet élève", type="primary"):
-                id_target = options_sup[eleve_a_supprimer]
-                if supprimer_eleve(id_target):
-                    st.success("Élève supprimé avec succès.")
-                    st.rerun()
-        else:
-            st.info("Aucun élève enregistré pour le moment.")
-
-    # --------------------------------------
-    # MENU 2 : SAISIE DES NOTES (PC)
-    # --------------------------------------
-    elif menu == "2. Saisie des Notes (PC)":
-        st.title("📝 Saisie Centrale des Notes")
-        eleves_data = charger_eleves()
-        
-        if not eleves_data:
-            st.warning("Aucun élève disponible.")
-        else:
-            options_eleves = {f"{e['nom'].upper()} {e['prenom']} ({e['classe']})": e for e in eleves_data}
-            choix = st.selectbox("Sélectionner l'élève :", list(options_eleves.keys()))
-            eleve = options_eleves[choix]
-
-            notes_existantes = eleve.get("notes") or {}
-            nouvelles_notes = {}
-            sum_points_coeff = 0.0
-
-            with st.form("form_saisie_pc"):
-                st.subheader(f"Saisie pour : {eleve['prenom']} {eleve['nom'].upper()}")
-                for m in MATIERES:
-                    st.markdown(f"**{m['nom']} (Coeff : {m['coef']})**")
-                    col_c, col_e = st.columns(2)
-                    
-                    val_c_defaut = float(notes_existantes.get(m['code'], {}).get('classe', 10.0))
-                    val_e_defaut = float(notes_existantes.get(m['code'], {}).get('compo', 10.0))
-
-                    v_classe = col_c.number_input("Note Classe /20", min_value=0.0, max_value=20.0, value=val_c_defaut, step=0.5, key=f"pc_{m['code']}_c")
-                    v_compo = col_e.number_input("Note Compo /40", min_value=0.0, max_value=40.0, value=val_e_defaut, step=0.5, key=f"pc_{m['code']}_e")
-
-                    moy_matiere = ((v_classe / 20.0) + (v_compo / 40.0)) / 3.0 * 20.0
-                    moy_coeff = moy_matiere * m['coef']
-                    sum_points_coeff += moy_coeff
-
-                    nouvelles_notes[m['code']] = {
-                        "classe": v_classe,
-                        "compo": v_compo,
-                        "moyenne": round(moy_matiere, 2),
-                        "moyenne_coeff": round(moy_coeff, 2),
-                        "appreciation": obtenir_appreciation(moy_matiere)
-                    }
-
-                moyenne_generale = sum_points_coeff / TOTAL_COEFFS
-
-                submitted = st.form_submit_button("💾 Calculer et Enregistrer")
-                if submitted:
-                    sauvegarder_eleve(
-                        id_eleve=eleve["id"],
-                        nom=eleve["nom"],
-                        prenom=eleve["prenom"],
-                        classe=eleve["classe"],
-                        notes=nouvelles_notes,
-                        total_points=round(sum_points_coeff, 2),
-                        moyenne=round(moyenne_generale, 2)
-                    )
-                    st.success(f"Bulletin mis à jour ! Moyenne Générale : {moyenne_generale:.2f}/20")
+                if btn_ajouter and nom and prenom:
+                    notes_vides = {m: {"classe": 0.0, "compo": 0.0} for m in MATIERES_COEFS.keys()}
+                    sauvegarder_eleve_db(None, nom.upper(), prenom.title(), classe, notes_vides)
+                    st.success("Élève inscrit avec succès !")
                     st.rerun()
 
-    # --------------------------------------
-    # MENU 3 : CLASSEMENT & RÉSULTATS
-    # --------------------------------------
-    elif menu == "3. Classement & Résultats":
-        st.title("🏆 Délibération et Classement Général")
-        eleves = charger_eleves()
-        if eleves:
-            df = pd.DataFrame(eleves)
-            if "moyenne" in df.columns and not df.empty:
-                df = df.sort_values(by="moyenne", ascending=False).reset_index(drop=True)
-                df["Rang"] = df.index + 1
-                
-                st.dataframe(
-                    df[["Rang", "nom", "prenom", "classe", "moyenne", "total_points"]],
-                    use_container_width=True
-                )
+        with col2:
+            st.subheader("Effectif enregistré")
+            if eleves_data:
+                df = pd.DataFrame(eleves_data)
+                st.dataframe(df[["id", "nom", "prenom", "classe", "moyenne", "total_points"]], use_container_width=True)
             else:
-                st.info("Aucune moyenne calculée pour le moment.")
+                st.info("Aucun élève enregistré.")
 
-    # --------------------------------------
-    # MENU 4 : IMPRESSION BULLETINS
-    # --------------------------------------
+    # --- MENU 2 : SAISIE DES NOTES (PC) ---
+    elif menu == "2. Saisie des Notes (PC)":
+        st.header("📝 Saisie Globale des Notes")
+        if not eleves_data:
+            st.warning("Veuillez d'abord inscrire des élèves.")
+            st.stop()
+
+        df_eleves = pd.DataFrame(eleves_data)
+        classe_sel = st.selectbox("Filtrer par classe :", CLASSES)
+        df_filtrer = df_eleves[df_eleves["classe"] == classe_sel]
+
+        if df_filtrer.empty:
+            st.warning("Aucun élève dans cette classe.")
+            st.stop()
+
+        eleve_options = {f"{row['nom']} {row['prenom']}": row for _, row in df_filtrer.iterrows()}
+        nom_eleve_sel = st.selectbox("Choisir l'élève :", list(eleve_options.keys()))
+        eleve_obj = eleve_options[nom_eleve_sel]
+
+        notes_actuelles = eleve_obj.get("notes") or {}
+        if isinstance(notes_actuelles, str):
+            notes_actuelles = json.loads(notes_actuelles)
+
+        st.subheader(f"Édition du bulletin : {eleve_obj['nom']} {eleve_obj['prenom']} ({classe_sel})")
+
+        with st.form("form_saisie_pc"):
+            nouv_notes = {}
+            cols_h = st.columns([3, 2, 2, 2])
+            cols_h[0].write("**Matière (Coef)**")
+            cols_h[1].write("**Classe (/20)**")
+            cols_h[2].write("**Compo (/40)**")
+            cols_h[3].write("**Moyenne (/20)**")
+
+            for mat, coef in MATIERES_COEFS.items():
+                m_data = notes_actuelles.get(mat, {"classe": 0.0, "compo": 0.0})
+                c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
+                c1.write(f"{mat} (**{coef}**)")
+                nc = c2.number_input(f"cl_{mat}", min_value=0.0, max_value=20.0, value=float(m_data.get("classe", 0.0)), step=0.5, label_visibility="collapsed")
+                np = c3.number_input(f"cp_{mat}", min_value=0.0, max_value=40.0, value=float(m_data.get("compo", 0.0)), step=0.5, label_visibility="collapsed")
+                moy_m = calculer_moyenne_matiere(nc, np)
+                c4.write(f"**{moy_m:.2f}**")
+                
+                nouv_notes[mat] = {"classe": nc, "compo": np}
+
+            btn_save = st.form_submit_button("Enregistrer toutes les notes 💾")
+
+        if btn_save:
+            sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], nouv_notes)
+            st.success("Toutes les notes ont été mises à jour !")
+            st.rerun()
+
+    # --- MENU 3 : CLASSEMENT & RÉSULTATS ---
+    elif menu == "3. Classement & Résultats":
+        st.header("🏆 Classement Général par Classe")
+        if not eleves_data:
+            st.warning("Aucune donnée disponible.")
+            st.stop()
+
+        df_eleves = pd.DataFrame(eleves_data)
+        classe_sel = st.selectbox("Sélectionner la classe :", CLASSES)
+        df_classe = df_eleves[df_eleves["classe"] == classe_sel].copy()
+
+        if df_classe.empty:
+            st.info("Aucun élève dans cette classe.")
+        else:
+            # Tri par moyenne décroissante
+            df_classe = df_classe.sort_values(by="moyenne", ascending=False).reset_index(drop=True)
+            df_classe["Rang"] = df_classe.index + 1
+            df_classe["Appréciation"] = df_classe["moyenne"].apply(attribuer_appreciation)
+
+            st.dataframe(
+                df_classe[["Rang", "nom", "prenom", "total_points", "moyenne", "Appréciation"]],
+                use_container_width=True
+            )
+
+    # --- MENU 4 : IMPRESSION DES BULLETINS ---
     elif menu == "4. Impression des Bulletins":
-        st.title("📄 Aperçu et Impression des Bulletins")
-        eleves_data = charger_eleves()
-        if eleves_data:
-            options_eleves = {f"{e['nom'].upper()} {e['prenom']} ({e['classe']})": e for e in eleves_data}
-            choix = st.selectbox("Choisir le bulletin à imprimer :", list(options_eleves.keys()))
-            eleve = options_eleves[choix]
+        st.header("🖨️ Impression du Bulletin de Notes")
+        if not eleves_data:
+            st.warning("Aucun élève enregistré.")
+            st.stop()
 
-            df_eleves = pd.DataFrame(eleves_data)
-            df_sorted = df_eleves.sort_values(by="moyenne", ascending=False).reset_index(drop=True)
-            rang_eleve = df_sorted[df_sorted['id'] == eleve['id']].index[0] + 1 if not df_sorted.empty else 1
-            total_effectif = len(eleves_data)
+        df_eleves = pd.DataFrame(eleves_data)
+        classe_sel = st.selectbox("Classe :", CLASSES, key="imp_cl")
+        df_classe = df_eleves[df_eleves["classe"] == classe_sel].sort_values(by="moyenne", ascending=False).reset_index(drop=True)
 
-            notes = eleve.get("notes") or {}
-            
-            rows_html = ""
-            total_moy_coeff = 0.0
+        if df_classe.empty:
+            st.info("Aucun élève dans cette classe.")
+            st.stop()
 
-            for m in MATIERES:
-                n_data = notes.get(m['code'], {})
-                c_val = f"{n_data.get('classe', 0.0):.2f}"
-                e_val = f"{n_data.get('compo', 0.0):.2f}"
-                m_val = f"{n_data.get('moyenne', 0.0):.2f}"
-                mc_val = f"{n_data.get('moyenne_coeff', 0.0):.2f}"
-                app_val = n_data.get('appreciation', obtenir_appreciation(n_data.get('moyenne', 0.0)))
-                
-                total_moy_coeff += n_data.get('moyenne_coeff', 0.0)
+        eleve_options = {f"{row['nom']} {row['prenom']}": (i+1, row) for i, row in df_classe.iterrows()}
+        nom_sel = st.selectbox("Élève :", list(eleve_options.keys()))
+        rang, eleve_obj = eleve_options[nom_sel]
 
-                rows_html += f"""
-                <tr>
-                    <td style="border:1px solid #000; padding:5px; font-weight:bold;">{m['nom']}</td>
-                    <td style="border:1px solid #000; padding:5px; text-align:right;">{c_val}</td>
-                    <td style="border:1px solid #000; padding:5px; text-align:right;">{e_val}</td>
-                    <td style="border:1px solid #000; padding:5px; text-align:right;">{m_val}</td>
-                    <td style="border:1px solid #000; padding:5px; text-align:center;">{m['coef']}</td>
-                    <td style="border:1px solid #000; padding:5px; text-align:right; font-weight:bold;">{mc_val}</td>
-                    <td style="border:1px solid #000; padding:5px; text-align:left;">{app_val}</td>
-                </tr>
-                """
+        notes_actuelles = eleve_obj.get("notes") or {}
+        if isinstance(notes_actuelles, str):
+            notes_actuelles = json.loads(notes_actuelles)
 
-            moy_gen = eleve.get('moyenne', 0.0)
-            app_generale = obtenir_appreciation(moy_gen)
-
-            html_content = f"""
-            <div style="border: 2px solid #000; padding: 25px; background-color: #fff; font-family: 'Times New Roman', Times, serif; max-width: 850px; margin: auto; color: #000;">
-                <div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: bold;">
-                    <div>
-                        <p style="margin: 2px;">CAP : Kalaban-Coro</p>
-                        <p style="margin: 2px;">Ecole_Privée_ : Diaratigui Coulibaly</p>
-                        <p style="margin: 2px;">Classe &nbsp;&nbsp;&nbsp; {eleve['classe']}</p>
-                    </div>
-                    <div style="text-align: right;">
-                        <p style="margin: 2px;">ANNEE SCOLAIRE 2025-2026</p>
-                    </div>
-                </div>
-                
-                <h2 style="text-align: center; margin-top: 20px; margin-bottom: 25px; font-size: 20px; font-weight: bold; letter-spacing: 1px;">BULLETIN DU PREMIER TRIMESTRE</h2>
-                
-                <div style="font-size: 15px; margin-bottom: 15px;">
-                    <p style="margin: 5px 0;"><strong>Prénom de L'élève</strong> &nbsp;&nbsp; {eleve['prenom']}</p>
-                    <p style="margin: 5px 0;"><strong>Nom de l'élève</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {eleve['nom'].upper()}</p>
-                </div>
-
-                <table style="width:100%; border-collapse:collapse; font-size:13px; border: 1px solid #000;">
-                    <thead>
-                        <tr style="background-color:#f2f2f2;">
-                            <th style="border:1px solid #000; padding:6px; text-align:left;">Matière</th>
-                            <th style="border:1px solid #000; padding:6px; width:85px; text-align:center;">Note classe/20</th>
-                            <th style="border:1px solid #000; padding:6px; width:85px; text-align:center;">Note compo/40</th>
-                            <th style="border:1px solid #000; padding:6px; width:85px; text-align:center;">Moyenne /Matière</th>
-                            <th style="border:1px solid #000; padding:6px; width:45px; text-align:center;">Coeff</th>
-                            <th style="border:1px solid #000; padding:6px; width:100px; text-align:center;">Moyenne coeff/Matière</th>
-                            <th style="border:1px solid #000; padding:6px; width:110px; text-align:left;">Appréciation</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {rows_html}
-                        <tr style="font-weight:bold; background-color:#f9f9f9;">
-                            <td style="border:1px solid #000; padding:6px;">Total</td>
-                            <td style="border:1px solid #000; padding:6px;"></td>
-                            <td style="border:1px solid #000; padding:6px;"></td>
-                            <td style="border:1px solid #000; padding:6px;"></td>
-                            <td style="border:1px solid #000; padding:6px; text-align:center;">{TOTAL_COEFFS}</td>
-                            <td style="border:1px solid #000; padding:6px; text-align:right;">{total_moy_coeff:.2f}</td>
-                            <td style="border:1px solid #000; padding:6px;"></td>
-                        </tr>
-                    </tbody>
-                </table>
-
-                <div style="margin-top: 25px; font-size: 14px; line-height: 1.8;">
-                    <p style="margin: 3px 0;"><strong>Moyenne :</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {moy_gen:.2f} / 20</p>
-                    <p style="margin: 3px 0;"><strong>Rang :</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {rang_eleve} {"ère" if rang_eleve == 1 else "ème"} / {total_effectif} élèves classés</p>
-                    <p style="margin: 5px 0; font-weight: bold; letter-spacing: 0.5px;">
-                        {"FELICITATIONS !" if moy_gen >= 14 else "ENCOURAGEMENTS !" if moy_gen >= 12 else "PASSABLE" if moy_gen >= 10 else "TRAVAIL INSUFFISANT"}
-                    </p>
-                    <p style="margin: 5px 0;"><strong>Appréciation</strong></p>
-                    <p style="margin: 2px 0;">{app_generale} !</p>
-                </div>
-
-                <div style="margin-top: 30px; text-align: right; font-weight: bold; font-size: 13px;">
-                    <p style="margin-right: 30px;">Signature du directeur</p>
-                </div>
+        # Aperçu du bulletin A4 HTML
+        st.markdown("---")
+        st.markdown(f"""
+        <div style="border:2px solid #000; padding:20px; font-family:Arial, sans-serif; background-color:#ffffff; color:#000000;">
+            <div style="text-align:center;">
+                <h2>ÉCOLE PRIVÉE DIARATIGUI COULIBALY</h2>
+                <p><b>BULLETIN DE NOTES DU 1ER SEMESTRE</b></p>
+                <hr>
             </div>
-            """
+            <p><b>Nom & Prénom :</b> {eleve_obj['nom']} {eleve_obj['prenom']}<br>
+            <b>Classe :</b> {eleve_obj['classe']} | <b>Rang :</b> {rang}e / {len(df_classe)}</p>
             
-            st.components.v1.html(html_content, height=850, scrolling=True)
-            st.info("💡 Appuyez sur `Ctrl + P` pour lancer l'impression directe du bulletin au format A4.")
+            <table style="width:100%; border-collapse:collapse; margin-top:15px;" border="1">
+                <thead>
+                    <tr style="background-color:#f2f2f2;">
+                        <th>Matière</th>
+                        <th>Coef</th>
+                        <th>Note Cl. (/20)</th>
+                        <th>Note Comp. (/40)</th>
+                        <th>Moy. (/20)</th>
+                        <th>Total Pts</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """, unsafe_allow_html=True)
+
+        for mat, coef in MATIERES_COEFS.items():
+            m_data = notes_actuelles.get(mat, {"classe": 0.0, "compo": 0.0})
+            nc = float(m_data.get("classe", 0.0))
+            np = float(m_data.get("compo", 0.0))
+            moy_m = calculer_moyenne_matiere(nc, np)
+            pts = round(moy_m * coef, 2)
+
+            st.markdown(f"""
+                <tr>
+                    <td style="padding:5px;">{mat}</td>
+                    <td style="text-align:center;">{coef}</td>
+                    <td style="text-align:center;">{nc:.2f}</td>
+                    <td style="text-align:center;">{np:.2f}</td>
+                    <td style="text-align:center;"><b>{moy_m:.2f}</b></td>
+                    <td style="text-align:center;">{pts:.2f}</td>
+                </tr>
+            """, unsafe_allow_html=True)
+
+        apprec = attribuer_appreciation(float(eleve_obj['moyenne']))
+        st.markdown(f"""
+                </tbody>
+            </table>
+            <br>
+            <div style="display:flex; justify-scale:space-between;">
+                <p><b>Total Coefficients :</b> {TOTAL_COEFFICIENTS}</p>
+                <p><b>Total Points :</b> {eleve_obj['total_points']:.2f}</p>
+                <p><b>Moyenne Générale :</b> <span style="font-size:18px;"><b>{eleve_obj['moyenne']:.2f} / 20</b></span></p>
+            </div>
+            <p><b>Appréciation globale :</b> {apprec}</p>
+            <br><br>
+            <div style="display:flex; justify-scale:space-between; text-align:center;">
+                <div><b>L'Enseignant / Assistant</b></div>
+                <div><b>Le Directeur</b></div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
