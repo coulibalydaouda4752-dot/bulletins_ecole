@@ -68,8 +68,8 @@ def calculer_bilan_eleve(notes_dict):
     total_points = 0.0
     for matiere, coef in MATIERES_COEFS.items():
         m_notes = notes_dict.get(matiere, {})
-        nc = m_notes.get("classe", 0.0)
-        np = m_notes.get("compo", 0.0)
+        nc = m_notes.get("classe")
+        np = m_notes.get("compo")
         moy_mat = calculer_moyenne_matiere(nc, np)
         total_points += moy_mat * coef
         
@@ -148,13 +148,14 @@ if mode_mobile:
 
     st.subheader(f"Élève : {eleve_obj['nom']} {eleve_obj['prenom']}")
 
-    # Formulaire affichant toutes les matières à la suite (sans menu déroulant pour les matières)
     with st.form("form_saisie_mobile_complet"):
         nouv_notes = {}
         
         for mat, coef in MATIERES_COEFS.items():
-            m_data = notes_actuelles.get(mat, {"classe": 0.0, "compo": 0.0})
-            
+            m_data = notes_actuelles.get(mat, {})
+            val_cl = float(m_data.get("classe")) if m_data.get("classe") is not None else None
+            val_co = float(m_data.get("compo")) if m_data.get("compo") is not None else None
+
             st.markdown(f"**{mat}** *(Coef: {coef})*")
             col_cl, col_co = st.columns(2)
             
@@ -163,7 +164,7 @@ if mode_mobile:
                     "Classe /20", 
                     min_value=0.0, 
                     max_value=20.0, 
-                    value=float(m_data.get("classe", 0.0)), 
+                    value=val_cl, 
                     step=0.5, 
                     key=f"m_cl_{mat}"
                 )
@@ -172,13 +173,17 @@ if mode_mobile:
                     "Compo /40", 
                     min_value=0.0, 
                     max_value=40.0, 
-                    value=float(m_data.get("compo", 0.0)), 
+                    value=val_co, 
                     step=0.5, 
                     key=f"m_cp_{mat}"
                 )
             
-            moy_m = calculer_moyenne_matiere(nc, np)
-            st.caption(f"Moyenne : {moy_m:.2f} / 20")
+            if nc is not None and np is not None:
+                moy_m = calculer_moyenne_matiere(nc, np)
+                st.caption(f"Moyenne : {moy_m:.2f} / 20")
+            else:
+                st.caption("Moyenne : -- / 20")
+                
             st.markdown("---")
             
             nouv_notes[mat] = {"classe": nc, "compo": np}
@@ -186,9 +191,15 @@ if mode_mobile:
         btn_valider = st.form_submit_button("Enregistrer toutes les notes 💾", use_container_width=True)
 
     if btn_valider:
-        sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], nouv_notes)
-        st.success("Toutes les notes ont été enregistrées avec succès !")
-        st.rerun()
+        # Vérification des champs vides
+        champs_incomplets = [m for m, v in nouv_notes.items() if v["classe"] is None or v["compo"] is None]
+        
+        if champs_incomplets:
+            st.error(f"❌ Veuillez remplir toutes les notes avant d'enregistrer. Matières incomplètes : {', '.join(champs_incomplets)}")
+        else:
+            sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], nouv_notes)
+            st.success("Toutes les notes ont été enregistrées avec succès !")
+            st.rerun()
 
 else:
     # --------------------------------------
@@ -223,7 +234,7 @@ else:
                 btn_ajouter = st.form_submit_button("Ajouter à la base")
 
                 if btn_ajouter and nom and prenom:
-                    notes_vides = {m: {"classe": 0.0, "compo": 0.0} for m in MATIERES_COEFS.keys()}
+                    notes_vides = {m: {"classe": None, "compo": None} for m in MATIERES_COEFS.keys()}
                     sauvegarder_eleve_db(None, nom.upper(), prenom.title(), classe, notes_vides)
                     st.success("Élève inscrit avec succès !")
                     st.rerun()
@@ -270,22 +281,33 @@ else:
             cols_h[3].write("**Moyenne (/20)**")
 
             for mat, coef in MATIERES_COEFS.items():
-                m_data = notes_actuelles.get(mat, {"classe": 0.0, "compo": 0.0})
+                m_data = notes_actuelles.get(mat, {})
+                val_cl = float(m_data.get("classe")) if m_data.get("classe") is not None else None
+                val_co = float(m_data.get("compo")) if m_data.get("compo") is not None else None
+
                 c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
                 c1.write(f"{mat} (**{coef}**)")
-                nc = c2.number_input(f"cl_{mat}", min_value=0.0, max_value=20.0, value=float(m_data.get("classe", 0.0)), step=0.5, label_visibility="collapsed")
-                np = c3.number_input(f"cp_{mat}", min_value=0.0, max_value=40.0, value=float(m_data.get("compo", 0.0)), step=0.5, label_visibility="collapsed")
-                moy_m = calculer_moyenne_matiere(nc, np)
-                c4.write(f"**{moy_m:.2f}**")
+                nc = c2.number_input(f"cl_{mat}", min_value=0.0, max_value=20.0, value=val_cl, step=0.5, label_visibility="collapsed")
+                np = c3.number_input(f"cp_{mat}", min_value=0.0, max_value=40.0, value=val_co, step=0.5, label_visibility="collapsed")
+                
+                if nc is not None and np is not None:
+                    moy_m = calculer_moyenne_matiere(nc, np)
+                    c4.write(f"**{moy_m:.2f}**")
+                else:
+                    c4.write("--")
                 
                 nouv_notes[mat] = {"classe": nc, "compo": np}
 
             btn_save = st.form_submit_button("Enregistrer toutes les notes 💾")
 
         if btn_save:
-            sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], nouv_notes)
-            st.success("Toutes les notes ont été mises à jour !")
-            st.rerun()
+            champs_incomplets = [m for m, v in nouv_notes.items() if v["classe"] is None or v["compo"] is None]
+            if champs_incomplets:
+                st.error(f"❌ Veuillez remplir toutes les notes avant d'enregistrer. Matières incomplètes : {', '.join(champs_incomplets)}")
+            else:
+                sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], nouv_notes)
+                st.success("Toutes les notes ont été mises à jour !")
+                st.rerun()
 
     # --- MENU 3 : CLASSEMENT & RÉSULTATS ---
     elif menu == "3. Classement & Résultats":
@@ -333,24 +355,35 @@ else:
         if isinstance(notes_actuelles, str):
             notes_actuelles = json.loads(notes_actuelles)
 
-        # Construction du tableau HTML exact au modèle physique
+        # Construction du tableau HTML
         rows_html = ""
         for mat, coef in MATIERES_COEFS.items():
-            m_data = notes_actuelles.get(mat, {"classe": 0.0, "compo": 0.0})
-            nc = float(m_data.get("classe", 0.0))
-            np = float(m_data.get("compo", 0.0))
-            moy_m = calculer_moyenne_matiere(nc, np)
-            pts = round(moy_m * coef, 2)
-            apprec_mat = attribuer_appreciation(moy_m)
+            m_data = notes_actuelles.get(mat, {})
+            nc = m_data.get("classe")
+            np = m_data.get("compo")
+            
+            txt_nc = f"{float(nc):.2f}" if nc is not None else ""
+            txt_np = f"{float(np):.2f}" if np is not None else ""
+            
+            if nc is not None and np is not None:
+                moy_m = calculer_moyenne_matiere(nc, np)
+                pts = round(moy_m * coef, 2)
+                txt_moy = f"{moy_m:.2f}"
+                txt_pts = f"{pts:.2f}"
+                apprec_mat = attribuer_appreciation(moy_m)
+            else:
+                txt_moy = ""
+                txt_pts = ""
+                apprec_mat = ""
 
             rows_html += f"""
             <tr>
                 <td style="padding: 4px 8px; font-weight: bold;">{mat}</td>
-                <td style="text-align: center; padding: 4px;">{nc:.2f}</td>
-                <td style="text-align: center; padding: 4px;">{np:.2f}</td>
-                <td style="text-align: center; padding: 4px;">{moy_m:.2f}</td>
+                <td style="text-align: center; padding: 4px;">{txt_nc}</td>
+                <td style="text-align: center; padding: 4px;">{txt_np}</td>
+                <td style="text-align: center; padding: 4px;">{txt_moy}</td>
                 <td style="text-align: center; padding: 4px;">{coef}</td>
-                <td style="text-align: center; padding: 4px; font-weight: bold;">{pts:.2f}</td>
+                <td style="text-align: center; padding: 4px; font-weight: bold;">{txt_pts}</td>
                 <td style="padding: 4px 8px;">{apprec_mat}</td>
             </tr>
             """
@@ -358,7 +391,7 @@ else:
         apprec_generale = attribuer_appreciation(float(eleve_obj['moyenne']))
         suffix_rang = "ère" if rang == 1 else "ème"
 
-        # Rendu du Bulletin A4 répliqué
+        # Rendu du Bulletin
         st.markdown("---")
         st.markdown(f"""
         <div style="background-color: #ffffff; color: #000000; padding: 30px; border: 1px solid #ccc; font-family: 'Times New Roman', Times, serif; max-width: 800px; margin: auto;">
