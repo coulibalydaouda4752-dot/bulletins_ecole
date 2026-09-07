@@ -1,7 +1,15 @@
-import streamlit as st
-import pandas as pd
-from supabase import create_client, Client
+import io
 import json
+import pandas as pd
+import streamlit as st
+from supabase import Client, create_client
+
+# Importations ReportLab pour la génération du PDF multi-pages
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 
 # ==========================================
 # 1. CONFIGURATION DE LA PAGE & SUPABASE
@@ -26,7 +34,7 @@ except Exception as e:
     st.stop()
 
 # ==========================================
-# 2. DONNÉES DE CONFIGURATION (MATIÈRES & COEFS)
+# 2. DONNÉES DE CONFIGURATION
 # ==========================================
 MATIERES_COEFS = {
     "Rédaction": 3,
@@ -44,27 +52,18 @@ MATIERES_COEFS = {
 }
 
 TOTAL_COEFFICIENTS = sum(MATIERES_COEFS.values()) # 22
-
 CLASSES = ["7-ème A", "7-ème B", "8-ème A", "8-ème B", "9-ème Année"]
 
 # ==========================================
-# 3. FONCTIONS DE CALCUL ET FONCTIONNELLES
+# 3. FONCTIONS DE CALCUL
 # ==========================================
 def calculer_moyenne_matiere(note_classe, note_compo):
-    """
-    Note Classe /20
-    Note Compo /40
-    Moyenne Matière (/20) = (Note_Classe + Note_Compo) / 3
-    """
     if note_classe is None or note_compo is None:
         return 0.0
     moyenne = (float(note_classe) + float(note_compo)) / 3.0
     return round(moyenne, 2)
 
 def calculer_bilan_eleve(notes_dict):
-    """
-    Calcule le total des points et la moyenne générale
-    """
     total_points = 0.0
     for matiere, coef in MATIERES_COEFS.items():
         m_notes = notes_dict.get(matiere, {})
@@ -112,14 +111,168 @@ def sauvegarder_eleve_db(id_eleve, nom, prenom, classe, notes_dict):
         supabase.table("eleves").insert(data).execute()
 
 # ==========================================
-# 4. GESTION DU MODE DE NAVIGATION
+# 4. GÉNÉRATION PDF MULTI-BULLETINS (REPORTLAB)
+# ==========================================
+def generer_pdf_bulletins_classe(df_classe):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=30,
+        bottomMargin=30
+    )
+
+    story = []
+    styles = getSampleStyleSheet()
+
+    # Styles personnalisés
+    style_header_left = ParagraphStyle('HLeft', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=13)
+    style_header_right = ParagraphStyle('HRight', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=13, alignment=TA_RIGHT)
+    style_title = ParagraphStyle('Title', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=15, leading=18, alignment=TA_CENTER)
+    style_body = ParagraphStyle('Body', parent=styles['Normal'], fontName='Helvetica', fontSize=11, leading=15)
+    style_body_bold = ParagraphStyle('BodyBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, leading=15)
+    
+    style_cell = ParagraphStyle('Cell', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=11)
+    style_cell_bold = ParagraphStyle('CellBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=11)
+    style_cell_center = ParagraphStyle('CellCenter', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=11, alignment=TA_CENTER)
+    style_cell_center_bold = ParagraphStyle('CellCenterBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=11, alignment=TA_CENTER)
+
+    total_eleves = len(df_classe)
+
+    for i, (_, eleve_obj) in enumerate(df_classe.iterrows()):
+        rang = i + 1
+        suffix_rang = "ère" if rang == 1 else "ème"
+        
+        notes_actuelles = eleve_obj.get("notes") or {}
+        if isinstance(notes_actuelles, str):
+            notes_actuelles = json.loads(notes_actuelles)
+
+        # En-tête
+        header_data = [
+            [
+                Paragraph("CAP : Kalaban-Coro<br/>Ecole Privée : Diaratigui Coulibaly<br/>Classe : " + str(eleve_obj['classe']), style_header_left),
+                Paragraph("ANNEE SCOLAIRE 2025-2026", style_header_right)
+            ]
+        ]
+        t_header = Table(header_data, colWidths=[300, 230])
+        t_header.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP')]))
+        story.append(t_header)
+        story.append(Spacer(1, 15))
+
+        # Titre Bulletin
+        story.append(Paragraph("<u>BULLETIN DU PREMIER TRIMESTRE</u>", style_title))
+        story.append(Spacer(1, 15))
+
+        # Infos Élève
+        story.append(Paragraph(f"<b>Prénom de L'élève :</b> {eleve_obj['prenom']}", style_body))
+        story.append(Paragraph(f"<b>Nom de l'élève :</b> {eleve_obj['nom']}", style_body))
+        story.append(Spacer(1, 12))
+
+        # Tableau des Notes
+        table_data = [
+            [
+                Paragraph("Matière", style_cell_center_bold),
+                Paragraph("Note<br/>classe/20", style_cell_center_bold),
+                Paragraph("Note<br/>compo/40", style_cell_center_bold),
+                Paragraph("Moyenne<br/>/Matière", style_cell_center_bold),
+                Paragraph("Coeff", style_cell_center_bold),
+                Paragraph("Moyenne<br/>coeff/Matière", style_cell_center_bold),
+                Paragraph("Appréciation", style_cell_center_bold)
+            ]
+        ]
+
+        for mat, coef in MATIERES_COEFS.items():
+            m_data = notes_actuelles.get(mat, {})
+            nc = m_data.get("classe")
+            np = m_data.get("compo")
+
+            txt_nc = f"{float(nc):.2f}" if nc is not None else ""
+            txt_np = f"{float(np):.2f}" if np is not None else ""
+
+            if nc is not None and np is not None:
+                moy_m = calculer_moyenne_matiere(nc, np)
+                pts = round(moy_m * coef, 2)
+                txt_moy = f"{moy_m:.2f}"
+                txt_pts = f"{pts:.2f}"
+                apprec_mat = attribuer_appreciation(moy_m)
+            else:
+                txt_moy = ""
+                txt_pts = ""
+                apprec_mat = ""
+
+            table_data.append([
+                Paragraph(mat, style_cell_bold),
+                Paragraph(txt_nc, style_cell_center),
+                Paragraph(txt_np, style_cell_center),
+                Paragraph(txt_moy, style_cell_center),
+                Paragraph(str(coef), style_cell_center),
+                Paragraph(txt_pts, style_cell_center_bold),
+                Paragraph(apprec_mat, style_cell)
+            ])
+
+        # Ligne Total
+        table_data.append([
+            Paragraph("Total", style_cell_bold),
+            Paragraph("", style_cell),
+            Paragraph("", style_cell),
+            Paragraph("", style_cell),
+            Paragraph(str(TOTAL_COEFFICIENTS), style_cell_center_bold),
+            Paragraph(f"{eleve_obj['total_points']:.2f}", style_cell_center_bold),
+            Paragraph("", style_cell)
+        ])
+
+        t_notes = Table(table_data, colWidths=[110, 65, 65, 65, 45, 80, 100])
+        t_notes.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.8, colors.black),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+        ]))
+        story.append(t_notes)
+        story.append(Spacer(1, 15))
+
+        # Bilan de fin de bulletin
+        moy_gen = float(eleve_obj['moyenne'])
+        apprec_gen = attribuer_appreciation(moy_gen)
+        
+        if moy_gen >= 14:
+            mention = "FELICITATIONS !"
+        elif moy_gen >= 12:
+            mention = "ENCOURAGEMENTS !"
+        else:
+            mention = "PEUT MIEUX FAIRE"
+
+        story.append(Paragraph(f"<b>Moyenne :</b> &nbsp;&nbsp;&nbsp;&nbsp; {moy_gen:.2f} / 20", style_body))
+        story.append(Paragraph(f"<b>Rang :</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {rang} {suffix_rang} / {total_eleves} élèves classés", style_body))
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(f"<b>{mention}</b>", style_body_bold))
+        story.append(Paragraph("<b>Appréciation</b>", style_body))
+        story.append(Paragraph(f"<b>{apprec_gen} !</b>", style_body_bold))
+        story.append(Spacer(1, 15))
+
+        # Signature
+        story.append(Paragraph("Signature du directeur", style_header_right))
+
+        # Saut de page pour le bulletin suivant (sauf pour le dernier élève)
+        if i < total_eleves - 1:
+            story.append(PageBreak())
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+# ==========================================
+# 5. GESTION DU MODE DE NAVIGATION STREAMLIT
 # ==========================================
 query_params = st.query_params
 mode_mobile = query_params.get("mode") == "saisie"
 
 if mode_mobile:
     # --------------------------------------
-    # A. INTERFACE MOBILE (SAISIE DES NOTES COMPLETE)
+    # A. INTERFACE MOBILE (SAISIE DES NOTES)
     # --------------------------------------
     st.title("📱 Saisie des Notes")
     st.info("Interface optimisée pour smartphones")
@@ -130,7 +283,6 @@ if mode_mobile:
         st.stop()
 
     df_eleves = pd.DataFrame(eleves_data)
-    
     classe_sel = st.selectbox("Sélectionner la classe :", CLASSES)
     df_filtrer = df_eleves[df_eleves["classe"] == classe_sel]
 
@@ -185,15 +337,12 @@ if mode_mobile:
                 st.caption("Moyenne : -- / 20")
                 
             st.markdown("---")
-            
             nouv_notes[mat] = {"classe": nc, "compo": np}
 
         btn_valider = st.form_submit_button("Enregistrer toutes les notes 💾", use_container_width=True)
 
     if btn_valider:
-        # Vérification des champs vides
         champs_incomplets = [m for m, v in nouv_notes.items() if v["classe"] is None or v["compo"] is None]
-        
         if champs_incomplets:
             st.error(f"❌ Veuillez remplir toutes les notes avant d'enregistrer. Matières incomplètes : {', '.join(champs_incomplets)}")
         else:
@@ -334,28 +483,45 @@ else:
 
     # --- MENU 4 : IMPRESSION DES BULLETINS ---
     elif menu == "4. Impression des Bulletins":
-        st.header("🖨️ Impression du Bulletin de Notes")
+        st.header("🖨️ Impression des Bulletins")
         if not eleves_data:
             st.warning("Aucun élève enregistré.")
             st.stop()
 
         df_eleves = pd.DataFrame(eleves_data)
         classe_sel = st.selectbox("Classe :", CLASSES, key="imp_cl")
+        
+        # Tri automatique par rang
         df_classe = df_eleves[df_eleves["classe"] == classe_sel].sort_values(by="moyenne", ascending=False).reset_index(drop=True)
 
         if df_classe.empty:
             st.info("Aucun élève dans cette classe.")
             st.stop()
 
+        st.markdown("---")
+        
+        # BOUTON DE TÉLÉCHARGEMENT PDF UNIQUE POUR TOUTE LA CLASSE
+        pdf_data = generer_pdf_bulletins_classe(df_classe)
+        st.download_button(
+            label=f"📄 Télécharger TOUS les bulletins de la classe {classe_sel} en PDF",
+            data=pdf_data,
+            file_name=f"Bulletins_{classe_sel.replace(' ', '_')}.pdf",
+            mime="application/pdf",
+            type="primary"
+        )
+
+        st.markdown("---")
+        st.subheader("Aperçu individuel à l'écran")
+
         eleve_options = {f"{row['nom']} {row['prenom']}": (i+1, row) for i, row in df_classe.iterrows()}
-        nom_sel = st.selectbox("Élève :", list(eleve_options.keys()))
+        nom_sel = st.selectbox("Choisir un élève pour visualiser :", list(eleve_options.keys()))
         rang, eleve_obj = eleve_options[nom_sel]
 
         notes_actuelles = eleve_obj.get("notes") or {}
         if isinstance(notes_actuelles, str):
             notes_actuelles = json.loads(notes_actuelles)
 
-        # Construction du tableau HTML
+        # Construction du tableau HTML pour aperçu écran
         rows_html = ""
         for mat, coef in MATIERES_COEFS.items():
             m_data = notes_actuelles.get(mat, {})
@@ -391,12 +557,10 @@ else:
         apprec_generale = attribuer_appreciation(float(eleve_obj['moyenne']))
         suffix_rang = "ère" if rang == 1 else "ème"
 
-        # Rendu du Bulletin
-        st.markdown("---")
+        # Rendu Aperçu
         st.markdown(f"""
         <div style="background-color: #ffffff; color: #000000; padding: 30px; border: 1px solid #ccc; font-family: 'Times New Roman', Times, serif; max-width: 800px; margin: auto;">
             
-            <!-- EN-TÊTE -->
             <div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; margin-bottom: 5px;">
                 <div>CAP : Kalaban-Coro</div>
                 <div>ANNEE SCOLAIRE 2025-2026</div>
@@ -412,7 +576,6 @@ else:
                 BULLETIN DU PREMIER TRIMESTRE
             </div>
 
-            <!-- INFOS ÉLÈVE -->
             <div style="font-size: 15px; margin-bottom: 8px;">
                 <span style="font-weight: bold; display: inline-block; width: 160px;">Prénom de L'élève</span> : {eleve_obj['prenom']}
             </div>
@@ -420,7 +583,6 @@ else:
                 <span style="font-weight: bold; display: inline-block; width: 160px;">Nom de l'élève</span> : {eleve_obj['nom']}
             </div>
 
-            <!-- TABLEAU DES NOTES -->
             <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; font-size: 14px;">
                 <thead>
                     <tr style="border-bottom: 1px solid #000;">
@@ -447,7 +609,6 @@ else:
                 </tbody>
             </table>
 
-            <!-- BILAN BAS DE PAGE -->
             <div style="margin-top: 30px; font-size: 15px; line-height: 1.8;">
                 <div><b>Moyenne :</b> &nbsp;&nbsp;&nbsp;&nbsp; {eleve_obj['moyenne']:.2f} / 20</div>
                 <div><b>Rang :</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {rang} {suffix_rang} / {len(df_classe)} élèves classés</div>
@@ -458,7 +619,6 @@ else:
                 <div style="font-weight: bold; font-size: 16px;">{apprec_generale} !</div>
             </div>
 
-            <!-- SIGNATURE -->
             <div style="margin-top: 40px; text-align: right; font-weight: bold; font-size: 14px; padding-right: 20px;">
                 Signature du directeur
             </div>
