@@ -15,7 +15,6 @@ st.set_page_config(
 # Initialisation de Supabase
 @st.cache_resource
 def init_supabase() -> Client:
-    # Récupération des identifiants depuis secrets.toml ou st.secrets
     url = st.secrets["SUPABASE_URL"]
     key = st.secrets["SUPABASE_KEY"]
     return create_client(url, key)
@@ -30,18 +29,18 @@ except Exception as e:
 # 2. DONNÉES DE CONFIGURATION (MATIÈRES & COEFS)
 # ==========================================
 MATIERES_COEFS = {
-    "Rédaction / Composition": 2,
-    "Dictée / Questions": 1,
-    "Lecture / Explication": 1,
-    "Étude de texte": 2,
-    "Mathématiques": 4,
-    "Physique - Chimie": 2,
-    "Sciences de la Vie et de la Terre (SVT)": 2,
-    "Histoire - Géographie": 2,
+    "Rédaction": 3,
+    "Dictée-Questions": 2,
+    "Mathématique": 3,
+    "Physique-chimie": 3,
     "Anglais": 2,
-    "Éducation Civique et Morale (ECM)": 1,
-    "Éducation Physique et Sportive (EPS)": 1,
-    "Dessin / Travaux Pratiques": 1
+    "Science Nat": 2,
+    "Hist-Géo": 2,
+    "Ed civ. Morale": 1,
+    "Ed Physique": 1,
+    "Lecture": 1,
+    "Récitation": 1,
+    "Conduite": 1
 }
 
 TOTAL_COEFFICIENTS = sum(MATIERES_COEFS.values()) # 22
@@ -78,12 +77,14 @@ def calculer_bilan_eleve(notes_dict):
     return round(total_points, 2), round(moyenne_generale, 2)
 
 def attribuer_appreciation(moyenne):
-    if moyenne >= 16:
+    if moyenne >= 18:
         return "Excellent"
+    elif moyenne >= 16:
+        return "Très-bien"
     elif moyenne >= 14:
-        return "Très Bien"
-    elif moyenne >= 12:
         return "Bien"
+    elif moyenne >= 12:
+        return "Assez-bien"
     elif moyenne >= 10:
         return "Passable"
     elif moyenne >= 8:
@@ -113,7 +114,6 @@ def sauvegarder_eleve_db(id_eleve, nom, prenom, classe, notes_dict):
 # ==========================================
 # 4. GESTION DU MODE DE NAVIGATION
 # ==========================================
-# Détection automatique du paramètre URL ?mode=saisie
 query_params = st.query_params
 mode_mobile = query_params.get("mode") == "saisie"
 
@@ -131,7 +131,6 @@ if mode_mobile:
 
     df_eleves = pd.DataFrame(eleves_data)
     
-    # Sélection de la classe et de l'élève
     classe_sel = st.selectbox("Sélectionner la classe :", CLASSES)
     df_filtrer = df_eleves[df_eleves["classe"] == classe_sel]
 
@@ -143,14 +142,12 @@ if mode_mobile:
     nom_eleve_sel = st.selectbox("Sélectionner l'élève :", list(eleve_options.keys()))
     eleve_obj = eleve_options[nom_eleve_sel]
 
-    # Récupération des notes existantes
     notes_actuelles = eleve_obj.get("notes") or {}
     if isinstance(notes_actuelles, str):
         notes_actuelles = json.loads(notes_actuelles)
 
     st.subheader(f"Élève : {eleve_obj['nom']} {eleve_obj['prenom']}")
 
-    # Choix de la matière
     matiere_sel = st.selectbox("Choisir la matière :", list(MATIERES_COEFS.keys()))
     notes_mat = notes_actuelles.get(matiere_sel, {"classe": 0.0, "compo": 0.0})
 
@@ -280,7 +277,6 @@ else:
         if df_classe.empty:
             st.info("Aucun élève dans cette classe.")
         else:
-            # Tri par moyenne décroissante
             df_classe = df_classe.sort_values(by="moyenne", ascending=False).reset_index(drop=True)
             df_classe["Rang"] = df_classe.index + 1
             df_classe["Appréciation"] = df_classe["moyenne"].apply(attribuer_appreciation)
@@ -313,65 +309,102 @@ else:
         if isinstance(notes_actuelles, str):
             notes_actuelles = json.loads(notes_actuelles)
 
-        # Aperçu du bulletin A4 HTML
-        st.markdown("---")
-        st.markdown(f"""
-        <div style="border:2px solid #000; padding:20px; font-family:Arial, sans-serif; background-color:#ffffff; color:#000000;">
-            <div style="text-align:center;">
-                <h2>ÉCOLE PRIVÉE DIARATIGUI COULIBALY</h2>
-                <p><b>BULLETIN DE NOTES DU 1ER SEMESTRE</b></p>
-                <hr>
-            </div>
-            <p><b>Nom & Prénom :</b> {eleve_obj['nom']} {eleve_obj['prenom']}<br>
-            <b>Classe :</b> {eleve_obj['classe']} | <b>Rang :</b> {rang}e / {len(df_classe)}</p>
-            
-            <table style="width:100%; border-collapse:collapse; margin-top:15px;" border="1">
-                <thead>
-                    <tr style="background-color:#f2f2f2;">
-                        <th>Matière</th>
-                        <th>Coef</th>
-                        <th>Note Cl. (/20)</th>
-                        <th>Note Comp. (/40)</th>
-                        <th>Moy. (/20)</th>
-                        <th>Total Pts</th>
-                    </tr>
-                </thead>
-                <tbody>
-        """, unsafe_allow_html=True)
-
+        # Construction du tableau HTML exact au modèle physique
+        rows_html = ""
         for mat, coef in MATIERES_COEFS.items():
             m_data = notes_actuelles.get(mat, {"classe": 0.0, "compo": 0.0})
             nc = float(m_data.get("classe", 0.0))
             np = float(m_data.get("compo", 0.0))
             moy_m = calculer_moyenne_matiere(nc, np)
             pts = round(moy_m * coef, 2)
+            apprec_mat = attribuer_appreciation(moy_m)
 
-            st.markdown(f"""
-                <tr>
-                    <td style="padding:5px;">{mat}</td>
-                    <td style="text-align:center;">{coef}</td>
-                    <td style="text-align:center;">{nc:.2f}</td>
-                    <td style="text-align:center;">{np:.2f}</td>
-                    <td style="text-align:center;"><b>{moy_m:.2f}</b></td>
-                    <td style="text-align:center;">{pts:.2f}</td>
-                </tr>
-            """, unsafe_allow_html=True)
+            rows_html += f"""
+            <tr>
+                <td style="padding: 4px 8px; font-weight: bold;">{mat}</td>
+                <td style="text-align: center; padding: 4px;">{nc:.2f}</td>
+                <td style="text-align: center; padding: 4px;">{np:.2f}</td>
+                <td style="text-align: center; padding: 4px;">{moy_m:.2f}</td>
+                <td style="text-align: center; padding: 4px;">{coef}</td>
+                <td style="text-align: center; padding: 4px; font-weight: bold;">{pts:.2f}</td>
+                <td style="padding: 4px 8px;">{apprec_mat}</td>
+            </tr>
+            """
 
-        apprec = attribuer_appreciation(float(eleve_obj['moyenne']))
+        apprec_generale = attribuer_appreciation(float(eleve_obj['moyenne']))
+        suffix_rang = "ère" if rang == 1 else "ème"
+
+        # Rendu du Bulletin A4 répliqué
+        st.markdown("---")
         st.markdown(f"""
+        <div style="background-color: #ffffff; color: #000000; padding: 30px; border: 1px solid #ccc; font-family: 'Times New Roman', Times, serif; max-width: 800px; margin: auto;">
+            
+            <!-- EN-TÊTE -->
+            <div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; margin-bottom: 5px;">
+                <div>CAP : Kalaban-Coro</div>
+                <div>ANNEE SCOLAIRE 2025-2026</div>
+            </div>
+            <div style="font-size: 14px; font-weight: bold; margin-bottom: 5px;">
+                Ecole Privée : Diaratigui Coulibaly
+            </div>
+            <div style="font-size: 14px; font-weight: bold; margin-bottom: 20px;">
+                Classe &nbsp;&nbsp;&nbsp; {eleve_obj['classe']}
+            </div>
+
+            <div style="text-align: center; font-size: 20px; font-weight: bold; text-decoration: underline; margin-bottom: 25px;">
+                BULLETIN DU PREMIER TRIMESTRE
+            </div>
+
+            <!-- INFOS ÉLÈVE -->
+            <div style="font-size: 15px; margin-bottom: 8px;">
+                <span style="font-weight: bold; display: inline-block; width: 160px;">Prénom de L'élève</span> : {eleve_obj['prenom']}
+            </div>
+            <div style="font-size: 15px; margin-bottom: 20px;">
+                <span style="font-weight: bold; display: inline-block; width: 160px;">Nom de l'élève</span> : {eleve_obj['nom']}
+            </div>
+
+            <!-- TABLEAU DES NOTES -->
+            <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; font-size: 14px;">
+                <thead>
+                    <tr style="border-bottom: 1px solid #000;">
+                        <th style="border-right: 1px solid #000; padding: 6px; text-align: left; width: 25%;">Matière</th>
+                        <th style="border-right: 1px solid #000; padding: 6px; text-align: center;">Note<br>classe/20</th>
+                        <th style="border-right: 1px solid #000; padding: 6px; text-align: center;">Note<br>compo/40</th>
+                        <th style="border-right: 1px solid #000; padding: 6px; text-align: center;">Moyenne<br>/Matière</th>
+                        <th style="border-right: 1px solid #000; padding: 6px; text-align: center;">Coeff</th>
+                        <th style="border-right: 1px solid #000; padding: 6px; text-align: center;">Moyenne<br>coeff/Matière</th>
+                        <th style="padding: 6px; text-align: left;">Appréciation</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows_html}
+                    <tr style="border-top: 1px solid #000; font-weight: bold;">
+                        <td style="border-right: 1px solid #000; padding: 6px;">Total</td>
+                        <td style="border-right: 1px solid #000;"></td>
+                        <td style="border-right: 1px solid #000;"></td>
+                        <td style="border-right: 1px solid #000;"></td>
+                        <td style="border-right: 1px solid #000; text-align: center; padding: 6px;">{TOTAL_COEFFICIENTS}</td>
+                        <td style="border-right: 1px solid #000; text-align: center; padding: 6px;">{eleve_obj['total_points']:.2f}</td>
+                        <td></td>
+                    </tr>
                 </tbody>
             </table>
-            <br>
-            <div style="display:flex; justify-scale:space-between;">
-                <p><b>Total Coefficients :</b> {TOTAL_COEFFICIENTS}</p>
-                <p><b>Total Points :</b> {eleve_obj['total_points']:.2f}</p>
-                <p><b>Moyenne Générale :</b> <span style="font-size:18px;"><b>{eleve_obj['moyenne']:.2f} / 20</b></span></p>
+
+            <!-- BILAN BAS DE PAGE -->
+            <div style="margin-top: 30px; font-size: 15px; line-height: 1.8;">
+                <div><b>Moyenne :</b> &nbsp;&nbsp;&nbsp;&nbsp; {eleve_obj['moyenne']:.2f} / 20</div>
+                <div><b>Rang :</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {rang} {suffix_rang} / {len(df_classe)} élèves classés</div>
+                <div style="font-weight: bold; text-transform: uppercase; margin-top: 10px; font-size: 16px;">
+                    {"FELICITATIONS !" if eleve_obj['moyenne'] >= 14 else "ENCOURAGEMENTS !" if eleve_obj['moyenne'] >= 12 else "PEUT MIEUX FAIRE"}
+                </div>
+                <div style="margin-top: 10px;"><b>Appréciation</b></div>
+                <div style="font-weight: bold; font-size: 16px;">{apprec_generale} !</div>
             </div>
-            <p><b>Appréciation globale :</b> {apprec}</p>
-            <br><br>
-            <div style="display:flex; justify-scale:space-between; text-align:center;">
-                <div><b>L'Enseignant / Assistant</b></div>
-                <div><b>Le Directeur</b></div>
+
+            <!-- SIGNATURE -->
+            <div style="margin-top: 40px; text-align: right; font-weight: bold; font-size: 14px; padding-right: 20px;">
+                Signature du directeur
             </div>
+
         </div>
         """, unsafe_allow_html=True)
