@@ -661,14 +661,14 @@ else:
                 apprec_mat = ""
 
             rows_html += f"""
-            <tr>
-                <td style="padding: 4px 8px; font-weight: bold;">{mat}</td>
-                <td style="text-align: center; padding: 4px;">{txt_nc}</td>
-                <td style="text-align: center; padding: 4px;">{txt_np}</td>
-                <td style="text-align: center; padding: 4px;">{txt_moy}</td>
-                <td style="text-align: center; padding: 4px;">{coef}</td>
-                <td style="text-align: center; padding: 4px; font-weight: bold;">{txt_pts}</td>
-                <td style="padding: 4px 8px;">{apprec_mat}</td>
+            <tr style="border-bottom: 1px solid #ccc;">
+                <td style="padding: 6px 8px; font-weight: bold;">{mat}</td>
+                <td style="text-align: center; padding: 6px; border-left: 1px solid #ccc;">{txt_nc}</td>
+                <td style="text-align: center; padding: 6px; border-left: 1px solid #ccc;">{txt_np}</td>
+                <td style="text-align: center; padding: 6px; border-left: 1px solid #ccc;">{txt_moy}</td>
+                <td style="text-align: center; padding: 6px; border-left: 1px solid #ccc;">{coef}</td>
+                <td style="text-align: center; padding: 6px; border-left: 1px solid #ccc; font-weight: bold;">{txt_pts}</td>
+                <td style="padding: 6px 8px; border-left: 1px solid #ccc;">{apprec_mat}</td>
             </tr>
             """
 
@@ -676,25 +676,25 @@ else:
         suffix_rang = "ère" if rang_eleve == 1 else "ème"
         citation_apercu = CITATIONS_EDUCATIVES[idx_eleve % len(CITATIONS_EDUCATIVES)]
 
-        st.markdown(f"""
-        <div style="background-color: #ffffff; color: #000000; padding: 30px; border: 1px solid #ccc; font-family: 'Times New Roman', Times, serif; max-width: 800px; margin: auto;">
+        bulletin_html = f"""
+        <div style="background-color: #ffffff; color: #000000; padding: 30px; border: 1px solid #ccc; border-radius: 6px; font-family: 'Times New Roman', Times, serif; max-width: 850px; margin: auto;">
             
             <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: bold; margin-bottom: 15px;">
-                <div style="width: 38%;">
+                <div style="width: 38%; text-align: left; line-height: 1.4;">
                     CAP : Kalaban-Coro<br>
                     Ecole Privée : Diaratigui Coulibaly<br>
                     Classe : {eleve_obj['classe']}
                 </div>
                 <div style="width: 24%; text-align: center;">
-                    <div style="font-size: 18px; color: #0F2C59; font-weight: bold;">EPDC</div>
+                    <div style="font-size: 22px; color: #0F2C59; font-weight: bold;">EPDC</div>
                 </div>
-                <div style="width: 38%; text-align: right;">
+                <div style="width: 38%; text-align: right; line-height: 1.4;">
                     ANNÉE SCOLAIRE : {annee_scolaire_input}<br>
                     <span style="color: #1E3A8A;">{trimestre_input}</span>
                 </div>
             </div>
 
-            <div style="text-align: center; font-size: 18px; font-weight: bold; text-decoration: underline; margin-bottom: 20px; color: #0F2C59;">
+            <div style="text-align: center; font-size: 18px; font-weight: bold; text-decoration: underline; margin: 20px 0; color: #0F2C59;">
                 BULLETIN DE NOTES - {trimestre_input}
             </div>
 
@@ -707,8 +707,8 @@ else:
 
             <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; font-size: 13px;">
                 <thead>
-                    <tr style="border-bottom: 1px solid #000;">
-                        <th style="border-right: 1px solid #000; padding: 6px; text-align: left; width: 25%;">Matière</th>
+                    <tr style="border-bottom: 1px solid #000; background-color: #f2f2f2;">
+                        <th style="border-right: 1px solid #000; padding: 6px; text-align: left; width: 28%;">Matière</th>
                         <th style="border-right: 1px solid #000; padding: 6px; text-align: center;">Note<br>classe/20</th>
                         <th style="border-right: 1px solid #000; padding: 6px; text-align: center;">Note<br>compo/40</th>
                         <th style="border-right: 1px solid #000; padding: 6px; text-align: center;">Moyenne<br>/Matière</th>
@@ -719,7 +719,7 @@ else:
                 </thead>
                 <tbody>
                     {rows_html}
-                    <tr style="border-top: 1px solid #000; font-weight: bold;">
+                    <tr style="border-top: 2px solid #000; font-weight: bold; background-color: #f9f9f9;">
                         <td style="border-right: 1px solid #000; padding: 6px;">Total</td>
                         <td style="border-right: 1px solid #000;"></td>
                         <td style="border-right: 1px solid #000;"></td>
@@ -737,12 +737,12 @@ else:
                 <div style="font-weight: bold; text-transform: uppercase; margin-top: 8px; font-size: 15px;">
                     {"FELICITATIONS !" if eleve_obj['moyenne'] >= 14 else "ENCOURAGEMENTS !" if eleve_obj['moyenne'] >= 12 else "PEUT MIEUX FAIRE"}
                 </div>
-                <div style="margin-top: 8px;"><b>Appréciation</b></div>
+                <div style="margin-top: 8px;"><b>Appréciation générale :</b></div>
                 <div style="font-weight: bold; font-size: 15px;">{apprec_generale} !</div>
             </div>
 
             <div style="margin-top: 30px; text-align: right; font-weight: bold; font-size: 14px; padding-right: 20px;">
-                Signature du directeur
+                Signature du Directeur
             </div>
 
             <div style="margin-top: 35px; border-top: 1px solid #cbd5e1; padding-top: 10px; text-align: center; font-style: italic; font-size: 12px; color: #4b5563;">
@@ -750,58 +750,31 @@ else:
             </div>
 
         </div>
-        """, unsafe_allow_html=True)
+        """
+
+        st.markdown(bulletin_html, unsafe_allow_html=True)
 
     elif menu == "5. Historique des Bulletins 📜":
-        st.header("📜 Historique des Bulletins Archivés")
-        st.write("Consultez et réimprimez les bulletins générés antérieurement.")
-
+        st.header("📜 Historique des Bulletins enregistrés")
+        
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1:
-            f_annee = st.text_input("Filtrer par Année Scolaire :", value="")
+            f_annee = st.text_input("Filtrer par année :", value=annee_scolaire_input)
         with col_f2:
-            f_trimestre = st.selectbox("Filtrer par Période :", ["Tous", "1er TRIMESTRE", "2ème TRIMESTRE", "3ème TRIMESTRE"])
+            f_trimestre = st.selectbox("Filtrer par trimestre :", ["Tous", "1er TRIMESTRE", "2ème TRIMESTRE", "3ème TRIMESTRE"])
         with col_f3:
-            f_classe = st.selectbox("Filtrer par Classe :", ["Toutes"] + CLASSES)
+            f_classe = st.selectbox("Filtrer par classe :", ["Toutes"] + CLASSES)
 
-        p_annee = f_annee if f_annee.strip() != "" else None
-        p_trimestre = f_trimestre if f_trimestre != "Tous" else None
-        p_classe = f_classe if f_classe != "Toutes" else None
+        trim_param = None if f_trimestre == "Tous" else f_trimestre
+        class_param = None if f_classe == "Toutes" else f_classe
 
-        historique_records = charger_historique_db(annee=p_annee, trimestre=p_trimestre, classe=p_classe)
+        histo_data = charger_historique_db(annee=f_annee, trimestre=trim_param, classe=class_param)
 
-        if not historique_records:
-            st.info("Aucun bulletin ne correspond à vos critères de recherche.")
+        if histo_data:
+            df_histo = pd.DataFrame(histo_data)
+            st.dataframe(
+                df_histo[["annee_scolaire", "trimestre", "classe", "nom", "prenom", "rang", "moyenne", "total_points", "created_at"]],
+                use_container_width=True
+            )
         else:
-            df_hist = pd.DataFrame(historique_records)
-            st.subheader(f"Bulletins archivés ({len(df_hist)} enregistrement(s))")
-
-            df_display = df_hist[["created_at", "annee_scolaire", "trimestre", "classe", "nom", "prenom", "rang", "moyenne"]].copy()
-            df_display.columns = ["Date Génération", "Année", "Période", "Classe", "Nom", "Prénom", "Rang", "Moyenne"]
-            st.dataframe(df_display, use_container_width=True)
-
-            st.markdown("---")
-            st.subheader("Ré-imprimer une archive de classe")
-            
-            groupes = df_hist.groupby(["annee_scolaire", "trimestre", "classe"])
-            groupes_labels = [f"{annee} | {trim} | {cl}" for (annee, trim, cl), _ in groupes]
-
-            if groupes_labels:
-                groupe_sel_label = st.selectbox("Choisir le lot de bulletins à ré-imprimer :", groupes_labels)
-                
-                sel_annee, sel_trim, sel_cl = groupe_sel_label.split(" | ")
-                df_reimprimer = df_hist[
-                    (df_hist["annee_scolaire"] == sel_annee) &
-                    (df_hist["trimestre"] == sel_trim) &
-                    (df_hist["classe"] == sel_cl)
-                ].sort_values(by="rang").reset_index(drop=True)
-
-                pdf_archive_data = generer_pdf_bulletins_classe(df_reimprimer, sel_annee, sel_trim)
-
-                st.download_button(
-                    label=f"🖨️ Ré-imprimer le PDF ({sel_cl} - {sel_trim} - {sel_annee})",
-                    data=pdf_archive_data,
-                    file_name=f"Archive_{sel_cl.replace(' ', '_')}_{sel_trim.replace(' ', '_')}.pdf",
-                    mime="application/pdf",
-                    type="primary"
-                )
+            st.info("Aucun bulletin archivé ne correspond aux critères sélectionnés.")
