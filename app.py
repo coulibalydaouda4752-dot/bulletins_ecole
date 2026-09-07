@@ -119,10 +119,10 @@ mode_mobile = query_params.get("mode") == "saisie"
 
 if mode_mobile:
     # --------------------------------------
-    # A. INTERFACE MOBILE (SAISIE DES NOTES)
+    # A. INTERFACE MOBILE (SAISIE DES NOTES COMPLETE)
     # --------------------------------------
-    st.title("📱 Saisie Rapide des Notes")
-    st.info("Interface optimisée pour smartphones - Assistants & Enseignants")
+    st.title("📱 Saisie des Notes")
+    st.info("Interface optimisée pour smartphones")
 
     eleves_data = charger_eleves_db()
     if not eleves_data:
@@ -148,22 +148,46 @@ if mode_mobile:
 
     st.subheader(f"Élève : {eleve_obj['nom']} {eleve_obj['prenom']}")
 
-    matiere_sel = st.selectbox("Choisir la matière :", list(MATIERES_COEFS.keys()))
-    notes_mat = notes_actuelles.get(matiere_sel, {"classe": 0.0, "compo": 0.0})
-
-    with st.form("form_saisie_mobile"):
-        note_cl = st.number_input("Note de Classe (/20) :", min_value=0.0, max_value=20.0, value=float(notes_mat.get("classe", 0.0)), step=0.5)
-        note_co = st.number_input("Note de Composition (/40) :", min_value=0.0, max_value=40.0, value=float(notes_mat.get("compo", 0.0)), step=0.5)
+    # Formulaire affichant toutes les matières à la suite (sans menu déroulant pour les matières)
+    with st.form("form_saisie_mobile_complet"):
+        nouv_notes = {}
         
-        moy_preview = calculer_moyenne_matiere(note_cl, note_co)
-        st.write(f"**Moyenne estimée dans cette matière :** {moy_preview} / 20")
+        for mat, coef in MATIERES_COEFS.items():
+            m_data = notes_actuelles.get(mat, {"classe": 0.0, "compo": 0.0})
+            
+            st.markdown(f"**{mat}** *(Coef: {coef})*")
+            col_cl, col_co = st.columns(2)
+            
+            with col_cl:
+                nc = st.number_input(
+                    "Classe /20", 
+                    min_value=0.0, 
+                    max_value=20.0, 
+                    value=float(m_data.get("classe", 0.0)), 
+                    step=0.5, 
+                    key=f"m_cl_{mat}"
+                )
+            with col_co:
+                np = st.number_input(
+                    "Compo /40", 
+                    min_value=0.0, 
+                    max_value=40.0, 
+                    value=float(m_data.get("compo", 0.0)), 
+                    step=0.5, 
+                    key=f"m_cp_{mat}"
+                )
+            
+            moy_m = calculer_moyenne_matiere(nc, np)
+            st.caption(f"Moyenne : {moy_m:.2f} / 20")
+            st.markdown("---")
+            
+            nouv_notes[mat] = {"classe": nc, "compo": np}
 
-        btn_valider = st.form_submit_button("Enregistrer la note 💾")
+        btn_valider = st.form_submit_button("Enregistrer toutes les notes 💾", use_container_width=True)
 
     if btn_valider:
-        notes_actuelles[matiere_sel] = {"classe": note_cl, "compo": note_co}
-        sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], notes_actuelles)
-        st.success(f"Notes enregistrées avec succès pour {matiere_sel} !")
+        sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], nouv_notes)
+        st.success("Toutes les notes ont été enregistrées avec succès !")
         st.rerun()
 
 else:
