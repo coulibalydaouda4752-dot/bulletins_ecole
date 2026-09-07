@@ -249,7 +249,7 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
 
         header_data = [
             [
-                Paragraph("CAP : Kalaban-Coro<br/><b>Ecole Privée : Diaratigui Coulibaly</b><br/>Classe : " + str(eleve_obj['classe']), style_header_left),
+                Paragraph("CAP : Kalaban-Coro<br/><b>Ecole Privée : Diaratigui COULIBALY</b><br/>Classe : " + str(eleve_obj['classe']), style_header_left),
                 logo_img,
                 Paragraph(header_right_text, style_header_right)
             ]
