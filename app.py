@@ -2,13 +2,14 @@ import io
 import json
 import pandas as pd
 import streamlit as st
+from datetime import datetime
 from supabase import Client, create_client
 
 # Importations ReportLab pour la génération du PDF multi-pages
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, Image
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 
 # ==========================================
@@ -34,7 +35,7 @@ except Exception as e:
     st.stop()
 
 # ==========================================
-# 2. DONNÉES DE CONFIGURATION
+# 2. DONNÉES DE CONFIGURATION & CITATIONS
 # ==========================================
 MATIERES_COEFS = {
     "Rédaction": 3,
@@ -53,6 +54,40 @@ MATIERES_COEFS = {
 
 TOTAL_COEFFICIENTS = sum(MATIERES_COEFS.values()) # 22
 CLASSES = ["7-ème A", "7-ème B", "8-ème A", "8-ème B", "9-ème Année"]
+
+# Banque de 30 citations éducatives et inspirantes
+CITATIONS_EDUCATIVES = [
+    "« L'éducation est l'arme la plus puissante qu'on puisse utiliser pour changer le monde. » – Nelson Mandela",
+    "« Le savoir est la seule matière qui s'accroît quand on la partage. » – Socrate",
+    "« Apprendre sans réfléchir est vain ; réfléchir sans apprendre est dangereux. » – Confucius",
+    "« L'apprentissage est un trésor qui suivra son propriétaire partout. » – Proverbe chinois",
+    "« La connaissance s'acquiert par l'expérience, tout le reste n'est que de l'information. » – Albert Einstein",
+    "« L'éducation n'est pas le fait d'apprendre des faits, mais de former l'esprit à penser. » – Albert Einstein",
+    "« Tu me dis, j'oublie. Tu m'enseignes, je me souviens. Tu m'impliques, j'apprends. » – Benjamin Franklin",
+    "« Les racines de l'éducation sont amères, mais ses fruits sont doux. » – Aristote",
+    "« Le succès est la somme de petits efforts, répétés jour après jour. » – Robert Collier",
+    "« Ce n'est pas parce que les choses sont difficiles que nous n'osons pas, c'est parce que nous n'osons pas qu'elles sont difficiles. » – Sénèque",
+    "« Il n'y a pas d'ascenseur pour le succès, il faut prendre l'escalier. » – Proverbe",
+    "« La discipline est le pont entre les objectifs et les réalisations. » – Jim Rohn",
+    "« Le seul endroit où le succès vient avant le travail, c'est dans le dictionnaire. » – Vidal Sassoon",
+    "« Travaillez dur en silence, laissez votre succès faire du bruit. » – Frank Ocean",
+    "« La patience et la persévérance ont un effet magique devant lequel les difficultés disparaissent. » – John Quincy Adams",
+    "« Les grandes choses ne sont pas réalisées par la force, mais par la persévérance. » – Samuel Johnson",
+    "« Il n'y a pas d'échec, il n'y a que de l'apprentissage. » – Nelson Mandela",
+    "« Je ne perds jamais. Soit je gagne, soit j'apprends. » – Nelson Mandela",
+    "« Le succès consiste à aller d'échec en échec sans perdre son enthousiasme. » – Winston Churchill",
+    "« La plus grande gloire n'est pas de ne jamais tomber, mais de se relever à chaque chute. » – Confucius",
+    "« L'erreur n'est pas l'opposé de la réussite, elle fait partie de la réussite. » – Arianna Huffington",
+    "« Le futur appartient à ceux qui croient en la beauté de leurs rêves. » – Eleanor Roosevelt",
+    "« Se former, c'est investir dans son propre avenir. »",
+    "« Vis comme si tu devais mourir demain. Apprends comme si tu devais vivre toujours. » – Mahatma Gandhi",
+    "« Le courage, c'est d'aller à l'idéal et de comprendre le réel. » – Jean Jaurès",
+    "« Crois en tes rêves et ils se réaliseront peut-être. Crois en toi et ils se réaliseront sûrement. » – Martin Luther King",
+    "« Ce que l'on fait avec passion se fait toujours bien. »",
+    "« Ne limite pas tes défis, défie tes limites. »",
+    "« Chaque jour est une nouvelle opportunité d'apprendre et de progresser. »",
+    "« L'esprit est comme un parachute : il ne fonctionne que lorsqu'il est ouvert. » – Albert Einstein"
+]
 
 # ==========================================
 # 3. FONCTIONS DE CALCUL ET BASE DE DONNÉES
@@ -110,38 +145,84 @@ def sauvegarder_eleve_db(id_eleve, nom, prenom, classe, notes_dict):
     else:
         supabase.table("eleves").insert(data).execute()
 
-# --- NOUVELLE FONCTION DE SUPPRESSION ---
 def supprimer_eleve_db(id_eleve):
     supabase.table("eleves").delete().eq("id", id_eleve).execute()
+
+# --- FONCTIONS HISTORIQUE DE BULLETINS ---
+def archiver_bulletins_db(df_classe, annee_scolaire, trimestre):
+    """Enregistre les bulletins d'une classe dans l'historique."""
+    enregistrements = []
+    for i, (_, eleve) in enumerate(df_classe.iterrows()):
+        rang = i + 1
+        notes = eleve.get("notes") or {}
+        if isinstance(notes, str):
+            try:
+                notes = json.loads(notes)
+            except json.JSONDecodeError:
+                notes = {}
+                
+        rec = {
+            "eleve_id": eleve.get("id"),
+            "nom": eleve["nom"],
+            "prenom": eleve["prenom"],
+            "classe": eleve["classe"],
+            "annee_scolaire": annee_scolaire,
+            "trimestre": trimestre,
+            "moyenne": float(eleve["moyenne"]),
+            "total_points": float(eleve["total_points"]),
+            "rang": rang,
+            "notes": notes
+        }
+        enregistrements.append(rec)
+    
+    # Insertion dans Supabase
+    try:
+        supabase.table("historique_bulletins").insert(enregistrements).execute()
+    except Exception as e:
+        st.warning(f"Note : L'archivage dans l'historique a rencontré un avertissement : {e}")
+
+def charger_historique_db(annee=None, trimestre=None, classe=None):
+    query = supabase.table("historique_bulletins").select("*")
+    if annee:
+        query = query.eq("annee_scolaire", annee)
+    if trimestre:
+        query = query.eq("trimestre", trimestre)
+    if classe:
+        query = query.eq("classe", classe)
+    
+    response = query.order("created_at", desc=True).execute()
+    return response.data
 
 # ==========================================
 # 4. GÉNÉRATION PDF MULTI-BULLETINS (REPORTLAB)
 # ==========================================
-def generer_pdf_bulletins_classe(df_classe):
+def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
         rightMargin=30,
         leftMargin=30,
-        topMargin=30,
-        bottomMargin=30
+        topMargin=25,
+        bottomMargin=25
     )
 
     story = []
     styles = getSampleStyleSheet()
 
     # Styles personnalisés
-    style_header_left = ParagraphStyle('HLeft', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=13)
-    style_header_right = ParagraphStyle('HRight', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=13, alignment=TA_RIGHT)
-    style_title = ParagraphStyle('Title', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=15, leading=18, alignment=TA_CENTER)
-    style_body = ParagraphStyle('Body', parent=styles['Normal'], fontName='Helvetica', fontSize=11, leading=15)
-    style_body_bold = ParagraphStyle('BodyBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, leading=15)
+    style_header_left = ParagraphStyle('HLeft', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=12)
+    style_header_right = ParagraphStyle('HRight', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=12, alignment=TA_RIGHT)
+    style_title = ParagraphStyle('Title', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=14, leading=17, alignment=TA_CENTER, textColor=colors.HexColor('#0F2C59'))
+    style_body = ParagraphStyle('Body', parent=styles['Normal'], fontName='Helvetica', fontSize=10, leading=14)
+    style_body_bold = ParagraphStyle('BodyBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=14)
     
-    style_cell = ParagraphStyle('Cell', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=11)
-    style_cell_bold = ParagraphStyle('CellBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=11)
-    style_cell_center = ParagraphStyle('CellCenter', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=11, alignment=TA_CENTER)
-    style_cell_center_bold = ParagraphStyle('CellCenterBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=11, alignment=TA_CENTER)
+    style_cell = ParagraphStyle('Cell', parent=styles['Normal'], fontName='Helvetica', fontSize=8.5, leading=11)
+    style_cell_bold = ParagraphStyle('CellBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8.5, leading=11)
+    style_cell_center = ParagraphStyle('CellCenter', parent=styles['Normal'], fontName='Helvetica', fontSize=8.5, leading=11, alignment=TA_CENTER)
+    style_cell_center_bold = ParagraphStyle('CellCenterBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8.5, leading=11, alignment=TA_CENTER)
+    
+    style_citation = ParagraphStyle('Citation', parent=styles['Italic'], fontName='Helvetica-Oblique', fontSize=8, leading=10, alignment=TA_CENTER, textColor=colors.HexColor('#4B5563'))
 
     total_eleves = len(df_classe)
 
@@ -151,28 +232,43 @@ def generer_pdf_bulletins_classe(df_classe):
         
         notes_actuelles = eleve_obj.get("notes") or {}
         if isinstance(notes_actuelles, str):
-            notes_actuelles = json.loads(notes_actuelles)
+            try:
+                notes_actuelles = json.loads(notes_actuelles)
+            except json.JSONDecodeError:
+                notes_actuelles = {}
 
-        # En-tête
+        # --- EN-TÊTE 3 COLONNES AVEC LOGO ---
+        LOGO_PATH = "logo.png"
+        try:
+            logo_img = Image(LOGO_PATH, width=50, height=50)
+        except Exception:
+            logo_img = Paragraph("<font size=12 color='#0F2C59'><b>EPDC</b></font>", style_cell_center_bold)
+
+        header_right_text = f"ANNÉE SCOLAIRE : {annee_scolaire}<br/><font color='#1E3A8A'><b>{trimestre}</b></font>"
+
         header_data = [
             [
-                Paragraph("CAP : Kalaban-Coro<br/>Ecole Privée : Diaratigui Coulibaly<br/>Classe : " + str(eleve_obj['classe']), style_header_left),
-                Paragraph("ANNEE SCOLAIRE 2025-2026", style_header_right)
+                Paragraph("CAP : Kalaban-Coro<br/><b>Ecole Privée : Diaratigui Coulibaly</b><br/>Classe : " + str(eleve_obj['classe']), style_header_left),
+                logo_img,
+                Paragraph(header_right_text, style_header_right)
             ]
         ]
-        t_header = Table(header_data, colWidths=[300, 230])
-        t_header.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP')]))
+        t_header = Table(header_data, colWidths=[210, 110, 210])
+        t_header.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('ALIGN', (1,0), (1,0), 'CENTER'),
+        ]))
         story.append(t_header)
-        story.append(Spacer(1, 15))
+        story.append(Spacer(1, 10))
 
         # Titre Bulletin
-        story.append(Paragraph("<u>BULLETIN DU PREMIER TRIMESTRE</u>", style_title))
-        story.append(Spacer(1, 15))
+        story.append(Paragraph(f"<u>BULLETIN DE NOTES - {trimestre}</u>", style_title))
+        story.append(Spacer(1, 10))
 
         # Infos Élève
         story.append(Paragraph(f"<b>Prénom de L'élève :</b> {eleve_obj['prenom']}", style_body))
         story.append(Paragraph(f"<b>Nom de l'élève :</b> {eleve_obj['nom']}", style_body))
-        story.append(Spacer(1, 12))
+        story.append(Spacer(1, 10))
 
         # Tableau des Notes
         table_data = [
@@ -231,11 +327,11 @@ def generer_pdf_bulletins_classe(df_classe):
         t_notes.setStyle(TableStyle([
             ('GRID', (0,0), (-1,-1), 0.8, colors.black),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+            ('TOPPADDING', (0,0), (-1,-1), 3),
         ]))
         story.append(t_notes)
-        story.append(Spacer(1, 15))
+        story.append(Spacer(1, 10))
 
         # Bilan de fin de bulletin
         moy_gen = float(eleve_obj['moyenne'])
@@ -250,16 +346,29 @@ def generer_pdf_bulletins_classe(df_classe):
 
         story.append(Paragraph(f"<b>Moyenne :</b> &nbsp;&nbsp;&nbsp;&nbsp; {moy_gen:.2f} / 20", style_body))
         story.append(Paragraph(f"<b>Rang :</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {rang} {suffix_rang} / {total_eleves} élèves classés", style_body))
-        story.append(Spacer(1, 6))
+        story.append(Spacer(1, 4))
         story.append(Paragraph(f"<b>{mention}</b>", style_body_bold))
         story.append(Paragraph("<b>Appréciation</b>", style_body))
         story.append(Paragraph(f"<b>{apprec_gen} !</b>", style_body_bold))
-        story.append(Spacer(1, 15))
+        story.append(Spacer(1, 10))
 
         # Signature
         story.append(Paragraph("Signature du directeur", style_header_right))
+        story.append(Spacer(1, 15))
 
-        # Saut de page pour le bulletin suivant (sauf pour le dernier élève)
+        # --- PIED DE PAGE : CITATION ÉDUCATIVE VARIABLE ---
+        citation = CITATIONS_EDUCATIVES[i % len(CITATIONS_EDUCATIVES)]
+        t_citation = Table([[Paragraph(f"💡 <i>{citation}</i>", style_citation)]], colWidths=[530])
+        t_citation.setStyle(TableStyle([
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('LINEABOVE', (0,0), (-1,0), 0.5, colors.HexColor('#CBD5E1')),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ]))
+        story.append(t_citation)
+
+        # Saut de page pour le bulletin suivant (sauf le dernier)
         if i < total_eleves - 1:
             story.append(PageBreak())
 
@@ -300,7 +409,10 @@ if mode_mobile:
 
     notes_actuelles = eleve_obj.get("notes") or {}
     if isinstance(notes_actuelles, str):
-        notes_actuelles = json.loads(notes_actuelles)
+        try:
+            notes_actuelles = json.loads(notes_actuelles)
+        except json.JSONDecodeError:
+            notes_actuelles = {}
 
     st.subheader(f"Élève : {eleve_obj['nom']} {eleve_obj['prenom']}")
 
@@ -316,23 +428,9 @@ if mode_mobile:
             col_cl, col_co = st.columns(2)
             
             with col_cl:
-                nc = st.number_input(
-                    "Classe /20", 
-                    min_value=0.0, 
-                    max_value=20.0, 
-                    value=val_cl, 
-                    step=0.5, 
-                    key=f"m_cl_{mat}"
-                )
+                nc = st.number_input("Classe /20", min_value=0.0, max_value=20.0, value=val_cl, step=0.5, key=f"m_cl_{mat}")
             with col_co:
-                np = st.number_input(
-                    "Compo /40", 
-                    min_value=0.0, 
-                    max_value=40.0, 
-                    value=val_co, 
-                    step=0.5, 
-                    key=f"m_cp_{mat}"
-                )
+                np = st.number_input("Compo /40", min_value=0.0, max_value=40.0, value=val_co, step=0.5, key=f"m_cp_{mat}")
             
             if nc is not None and np is not None:
                 moy_m = calculer_moyenne_matiere(nc, np)
@@ -356,10 +454,20 @@ if mode_mobile:
 
 else:
     # --------------------------------------
-    # B. INTERFACE PC (ADMINISTRATION COMPLETE)
+    # B. INTERFACE PC (ADMINISTRATION)
     # --------------------------------------
     st.sidebar.title("🏛️ Administration Centralisée")
     st.sidebar.write("École Privée Diaratigui Coulibaly")
+
+    # BARRE DE CONFIGURATION GÉNÉRALE DU BULLETIN
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("⚙️ Configuration Bulletins")
+    annee_scolaire_input = st.sidebar.text_input("Année Scolaire", value="2025-2026")
+    trimestre_input = st.sidebar.selectbox(
+        "Période / Trimestre",
+        ["1er TRIMESTRE", "2ème TRIMESTRE", "3ème TRIMESTRE"]
+    )
+    st.sidebar.markdown("---")
 
     menu = st.sidebar.radio(
         "Navigation :",
@@ -367,7 +475,8 @@ else:
             "1. Gestion des Élèves",
             "2. Saisie des Notes (PC)",
             "3. Classement & Résultats",
-            "4. Impression des Bulletins"
+            "4. Impression des Bulletins",
+            "5. Historique des Bulletins 📜"
         ]
     )
 
@@ -398,7 +507,7 @@ else:
                 df = pd.DataFrame(eleves_data)
                 st.dataframe(df[["id", "nom", "prenom", "classe", "moyenne", "total_points"]], use_container_width=True)
                 
-                # --- SECTION DE SUPPRESSION ---
+                # SECTION DE SUPPRESSION D'ÉLÈVES
                 st.markdown("---")
                 st.subheader("🗑️ Supprimer un élève")
                 
@@ -435,7 +544,10 @@ else:
 
         notes_actuelles = eleve_obj.get("notes") or {}
         if isinstance(notes_actuelles, str):
-            notes_actuelles = json.loads(notes_actuelles)
+            try:
+                notes_actuelles = json.loads(notes_actuelles)
+            except json.JSONDecodeError:
+                notes_actuelles = {}
 
         st.subheader(f"Édition du bulletin : {eleve_obj['nom']} {eleve_obj['prenom']} ({classe_sel})")
 
@@ -518,28 +630,40 @@ else:
 
         st.markdown("---")
         
-        # BOUTON DE TÉLÉCHARGEMENT PDF UNIQUE POUR TOUTE LA CLASSE
-        pdf_data = generer_pdf_bulletins_classe(df_classe)
-        st.download_button(
-            label=f"📄 Télécharger TOUS les bulletins de la classe {classe_sel} en PDF",
-            data=pdf_data,
-            file_name=f"Bulletins_{classe_sel.replace(' ', '_')}.pdf",
-            mime="application/pdf",
-            type="primary"
-        )
+        # TÉLÉCHARGEMENT ET ARCHIVAGE DU PDF
+        pdf_data = generer_pdf_bulletins_classe(df_classe, annee_scolaire_input, trimestre_input)
+        
+        col_btn1, col_btn2 = st.columns([2, 1])
+        with col_btn1:
+            btn_dl = st.download_button(
+                label=f"📄 Télécharger TOUS les bulletins ({classe_sel}) - {trimestre_input} en PDF",
+                data=pdf_data,
+                file_name=f"Bulletins_{classe_sel.replace(' ', '_')}_{trimestre_input.replace(' ', '_')}.pdf",
+                mime="application/pdf",
+                type="primary"
+            )
+        
+        if btn_dl:
+            # Archivage automatique de la session de génération
+            archiver_bulletins_db(df_classe, annee_scolaire_input, trimestre_input)
+            st.success("✅ Bulletins générés et archivés avec succès dans l'historique !")
 
         st.markdown("---")
         st.subheader("Aperçu individuel à l'écran")
 
-        eleve_options = {f"{row['nom']} {row['prenom']}": (i+1, row) for i, row in df_classe.iterrows()}
+        eleve_options = {f"{row['nom']} {row['prenom']}": (i, row) for i, row in df_classe.iterrows()}
         nom_sel = st.selectbox("Choisir un élève pour visualiser :", list(eleve_options.keys()))
-        rang, eleve_obj = eleve_options[nom_sel]
+        idx_eleve, eleve_obj = eleve_options[nom_sel]
+        rang_eleve = idx_eleve + 1
 
         notes_actuelles = eleve_obj.get("notes") or {}
         if isinstance(notes_actuelles, str):
-            notes_actuelles = json.loads(notes_actuelles)
+            try:
+                notes_actuelles = json.loads(notes_actuelles)
+            except json.JSONDecodeError:
+                notes_actuelles = {}
 
-        # Construction du tableau HTML pour aperçu écran
+        # Construction des lignes HTML du tableau
         rows_html = ""
         for mat, coef in MATIERES_COEFS.items():
             m_data = notes_actuelles.get(mat, {})
@@ -573,35 +697,40 @@ else:
             """
 
         apprec_generale = attribuer_appreciation(float(eleve_obj['moyenne']))
-        suffix_rang = "ère" if rang == 1 else "ème"
+        suffix_rang = "ère" if rang_eleve == 1 else "ème"
+        citation_apercu = CITATIONS_EDUCATIVES[idx_eleve % len(CITATIONS_EDUCATIVES)]
 
-        # Rendu Aperçu
+        # Rendu HTML de l'Aperçu
         st.markdown(f"""
         <div style="background-color: #ffffff; color: #000000; padding: 30px; border: 1px solid #ccc; font-family: 'Times New Roman', Times, serif; max-width: 800px; margin: auto;">
             
-            <div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; margin-bottom: 5px;">
-                <div>CAP : Kalaban-Coro</div>
-                <div>ANNEE SCOLAIRE 2025-2026</div>
-            </div>
-            <div style="font-size: 14px; font-weight: bold; margin-bottom: 5px;">
-                Ecole Privée : Diaratigui Coulibaly
-            </div>
-            <div style="font-size: 14px; font-weight: bold; margin-bottom: 20px;">
-                Classe &nbsp;&nbsp;&nbsp; {eleve_obj['classe']}
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: bold; margin-bottom: 15px;">
+                <div style="width: 38%;">
+                    CAP : Kalaban-Coro<br>
+                    Ecole Privée : Diaratigui Coulibaly<br>
+                    Classe : {eleve_obj['classe']}
+                </div>
+                <div style="width: 24%; text-align: center;">
+                    <div style="font-size: 18px; color: #0F2C59; font-weight: bold;">EPDC</div>
+                </div>
+                <div style="width: 38%; text-align: right;">
+                    ANNÉE SCOLAIRE : {annee_scolaire_input}<br>
+                    <span style="color: #1E3A8A;">{trimestre_input}</span>
+                </div>
             </div>
 
-            <div style="text-align: center; font-size: 20px; font-weight: bold; text-decoration: underline; margin-bottom: 25px;">
-                BULLETIN DU PREMIER TRIMESTRE
+            <div style="text-align: center; font-size: 18px; font-weight: bold; text-decoration: underline; margin-bottom: 20px; color: #0F2C59;">
+                BULLETIN DE NOTES - {trimestre_input}
             </div>
 
-            <div style="font-size: 15px; margin-bottom: 8px;">
+            <div style="font-size: 15px; margin-bottom: 6px;">
                 <span style="font-weight: bold; display: inline-block; width: 160px;">Prénom de L'élève</span> : {eleve_obj['prenom']}
             </div>
             <div style="font-size: 15px; margin-bottom: 20px;">
                 <span style="font-weight: bold; display: inline-block; width: 160px;">Nom de l'élève</span> : {eleve_obj['nom']}
             </div>
 
-            <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; font-size: 14px;">
+            <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; font-size: 13px;">
                 <thead>
                     <tr style="border-bottom: 1px solid #000;">
                         <th style="border-right: 1px solid #000; padding: 6px; text-align: left; width: 25%;">Matière</th>
@@ -627,19 +756,83 @@ else:
                 </tbody>
             </table>
 
-            <div style="margin-top: 30px; font-size: 15px; line-height: 1.8;">
+            <div style="margin-top: 25px; font-size: 14px; line-height: 1.8;">
                 <div><b>Moyenne :</b> &nbsp;&nbsp;&nbsp;&nbsp; {eleve_obj['moyenne']:.2f} / 20</div>
-                <div><b>Rang :</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {rang} {suffix_rang} / {len(df_classe)} élèves classés</div>
-                <div style="font-weight: bold; text-transform: uppercase; margin-top: 10px; font-size: 16px;">
+                <div><b>Rang :</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {rang_eleve} {suffix_rang} / {len(df_classe)} élèves classés</div>
+                <div style="font-weight: bold; text-transform: uppercase; margin-top: 8px; font-size: 15px;">
                     {"FELICITATIONS !" if eleve_obj['moyenne'] >= 14 else "ENCOURAGEMENTS !" if eleve_obj['moyenne'] >= 12 else "PEUT MIEUX FAIRE"}
                 </div>
-                <div style="margin-top: 10px;"><b>Appréciation</b></div>
-                <div style="font-weight: bold; font-size: 16px;">{apprec_generale} !</div>
+                <div style="margin-top: 8px;"><b>Appréciation</b></div>
+                <div style="font-weight: bold; font-size: 15px;">{apprec_generale} !</div>
             </div>
 
-            <div style="margin-top: 40px; text-align: right; font-weight: bold; font-size: 14px; padding-right: 20px;">
+            <div style="margin-top: 30px; text-align: right; font-weight: bold; font-size: 14px; padding-right: 20px;">
                 Signature du directeur
+            </div>
+
+            <div style="margin-top: 35px; border-top: 1px solid #cbd5e1; padding-top: 10px; text-align: center; font-style: italic; font-size: 12px; color: #4b5563;">
+                💡 {citation_apercu}
             </div>
 
         </div>
         """, unsafe_allow_html=True)
+
+    # --- MENU 5 : HISTORIQUE DES BULLETINS ---
+    elif menu == "5. Historique des Bulletins 📜":
+        st.header("📜 Historique des Bulletins Archivés")
+        st.write("Consultez et réimprimez les bulletins générés antérieurement.")
+
+        # Filtres de recherche
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1:
+            f_annee = st.text_input("Filtrer par Année Scolaire (ex: 2025-2026) :", value="")
+        with col_f2:
+            f_trimestre = st.selectbox("Filtrer par Période :", ["Tous", "1er TRIMESTRE", "2ème TRIMESTRE", "3ème TRIMESTRE"])
+        with col_f3:
+            f_classe = st.selectbox("Filtrer par Classe :", ["Toutes"] + CLASSES)
+
+        # Application des filtres
+        p_annee = f_annee if f_annee.strip() != "" else None
+        p_trimestre = f_trimestre if f_trimestre != "Tous" else None
+        p_classe = f_classe if f_classe != "Toutes" else None
+
+        historique_records = charger_historique_db(annee=p_annee, trimestre=p_trimestre, classe=p_classe)
+
+        if not historique_records:
+            st.info("Aucun bulletin ne correspond à vos critères de recherche dans l'historique.")
+        else:
+            df_hist = pd.DataFrame(historique_records)
+            st.subheader(f"Bulletins archivés ({len(df_hist)} enregistrement(s))")
+
+            # Affichage synthétique des archives
+            df_display = df_hist[["created_at", "annee_scolaire", "trimestre", "classe", "nom", "prenom", "rang", "moyenne"]].copy()
+            df_display.columns = ["Date Génération", "Année", "Période", "Classe", "Nom", "Prénom", "Rang", "Moyenne"]
+            st.dataframe(df_display, use_container_width=True)
+
+            # Option de ré-impression
+            st.markdown("---")
+            st.subheader("Ré-imprimer une archive de classe")
+            
+            groupes = df_hist.groupby(["annee_scolaire", "trimestre", "classe"])
+            groupes_labels = [f"{annee} | {trim} | {cl}" for (annee, trim, cl), _ in groupes]
+
+            if groupes_labels:
+                groupe_sel_label = st.selectbox("Choisir le lot de bulletins à ré-imprimer :", groupes_labels)
+                
+                # Extraction des informations sélectionnées
+                sel_annee, sel_trim, sel_cl = groupe_sel_label.split(" | ")
+                df_reimprimer = df_hist[
+                    (df_hist["annee_scolaire"] == sel_annee) &
+                    (df_hist["trimestre"] == sel_trim) &
+                    (df_hist["classe"] == sel_cl)
+                ].sort_values(by="rang").reset_index(drop=True)
+
+                pdf_archive_data = generer_pdf_bulletins_classe(df_reimprimer, sel_annee, sel_trim)
+
+                st.download_button(
+                    label=f"🖨️ Ré-imprimer le PDF ({sel_cl} - {sel_trim} - {sel_annee})",
+                    data=pdf_archive_data,
+                    file_name=f"Archive_{sel_cl.replace(' ', '_')}_{sel_trim.replace(' ', '_')}.pdf",
+                    mime="application/pdf",
+                    type="primary"
+                )
