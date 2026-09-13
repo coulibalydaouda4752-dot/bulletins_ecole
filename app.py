@@ -1,6 +1,7 @@
 import io
 import os
 import json
+import hashlib
 import textwrap
 import pandas as pd
 import streamlit as st
@@ -19,10 +20,162 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 # 1. CONFIGURATION DE LA PAGE & SUPABASE
 # ==========================================
 st.set_page_config(
-    page_title="Gestion des Bulletins - École Privée Diaratigui COULIBALY",
+    page_title="Bulletins - École Privée Diaratigui COULIBALY",
     page_icon="🎓",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
+
+# ------------------------------------------
+# Palette & typographie (voir bloc CSS plus bas)
+# ------------------------------------------
+COULEUR_FOND = "#F7F3EA"
+COULEUR_MARINE = "#13294B"
+COULEUR_OR = "#C89B3C"
+COULEUR_VERT = "#1E6F50"
+COULEUR_TEXTE = "#1C1C1C"
+COULEUR_TEXTE_DOUX = "#5B5B5B"
+COULEUR_BORDURE = "#E3DCC9"
+
+
+def injecter_css():
+    st.markdown(
+        f"""
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Lora:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+        html, body, [class*="css"] {{
+            font-family: 'Inter', sans-serif;
+            color: {COULEUR_TEXTE};
+        }}
+
+        .stApp {{
+            background-color: {COULEUR_FOND};
+        }}
+
+        h1, h2, h3 {{
+            font-family: 'Lora', serif !important;
+            color: {COULEUR_MARINE} !important;
+            font-weight: 600 !important;
+        }}
+
+        section[data-testid="stSidebar"] {{
+            background-color: {COULEUR_MARINE};
+        }}
+        section[data-testid="stSidebar"] * {{
+            color: #F2EFE6 !important;
+        }}
+        section[data-testid="stSidebar"] .stRadio label,
+        section[data-testid="stSidebar"] .stSelectbox label,
+        section[data-testid="stSidebar"] .stTextInput label {{
+            color: #D9CFAE !important;
+            font-weight: 500;
+        }}
+        section[data-testid="stSidebar"] input,
+        section[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] > div {{
+            background-color: #1D3A63 !important;
+            color: #F2EFE6 !important;
+            border-color: #2E4E7C !important;
+        }}
+
+        .marque-ecole {{
+            padding: 0.75rem 0 1.25rem 0;
+            border-bottom: 1px solid #2E4E7C;
+            margin-bottom: 1rem;
+        }}
+        .marque-ecole .nom {{
+            font-family: 'Lora', serif;
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #F2EFE6;
+            line-height: 1.3;
+        }}
+        .marque-ecole .lieu {{
+            font-size: 0.8rem;
+            color: {COULEUR_OR};
+            letter-spacing: 0.02em;
+        }}
+
+        .stButton > button {{
+            background-color: {COULEUR_MARINE};
+            color: #F2EFE6;
+            border: 1px solid {COULEUR_MARINE};
+            border-radius: 6px;
+            font-weight: 500;
+            padding: 0.5rem 1.1rem;
+            transition: background-color 0.15s ease;
+        }}
+        .stButton > button:hover {{
+            background-color: #1D3A63;
+            border-color: #1D3A63;
+            color: #F2EFE6;
+        }}
+        .stButton > button[kind="primary"] {{
+            background-color: {COULEUR_OR};
+            border-color: {COULEUR_OR};
+            color: {COULEUR_MARINE};
+            font-weight: 700;
+        }}
+        .stButton > button[kind="primary"]:hover {{
+            background-color: #B78A2E;
+            border-color: #B78A2E;
+        }}
+
+        .carte {{
+            background-color: #FFFFFF;
+            border: 1px solid {COULEUR_BORDURE};
+            border-radius: 10px;
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1rem;
+        }}
+
+        .badge {{
+            display: inline-block;
+            padding: 0.15rem 0.65rem;
+            border-radius: 5px;
+            font-size: 0.82rem;
+            font-weight: 600;
+        }}
+
+        .connexion-carte {{
+            max-width: 420px;
+            margin: 4rem auto 0 auto;
+            background-color: #FFFFFF;
+            border: 1px solid {COULEUR_BORDURE};
+            border-radius: 12px;
+            padding: 2.25rem 2rem;
+        }}
+        .connexion-titre {{
+            font-family: 'Lora', serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: {COULEUR_MARINE};
+            text-align: center;
+            margin-bottom: 0.15rem;
+        }}
+        .connexion-sous {{
+            text-align: center;
+            color: {COULEUR_TEXTE_DOUX};
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+        }}
+
+        div[data-testid="stDataFrame"] {{
+            border: 1px solid {COULEUR_BORDURE};
+            border-radius: 8px;
+        }}
+
+        hr {{ border-color: {COULEUR_BORDURE} !important; }}
+
+        #MainMenu {{visibility: hidden;}}
+        footer {{visibility: hidden;}}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+injecter_css()
 
 # Initialisation de Supabase
 @st.cache_resource
@@ -33,12 +186,93 @@ def init_supabase() -> Client:
 
 try:
     supabase = init_supabase()
-except Exception as e:
-    st.error("Erreur de connexion à la base de données Supabase. Vérifiez vos secrets.")
+except Exception:
+    st.error("⚠️ Erreur de connexion à la base de données Supabase. Vérifiez la configuration des secrets (SUPABASE_URL / SUPABASE_KEY).")
     st.stop()
 
 # ==========================================
-# 2. DONNÉES DE CONFIGURATION & CITATIONS
+# 2. AUTHENTIFICATION ADMINISTRATION
+# ==========================================
+# Les identifiants autorisés sont définis dans st.secrets, sous la forme :
+#
+# [admin_users]
+# directeur = "b8f3c9...hash_sha256..."
+# secretaire = "a12de4...hash_sha256..."
+#
+# Pour générer le hash d'un mot de passe, exécuter en local :
+#   python3 -c "import hashlib; print(hashlib.sha256('MonMotDePasse'.encode()).hexdigest())"
+# et copier le résultat dans les secrets. Ne jamais stocker de mot de passe en clair.
+
+def hacher_mdp(mdp: str) -> str:
+    return hashlib.sha256(mdp.encode("utf-8")).hexdigest()
+
+
+def obtenir_utilisateurs_autorises() -> dict:
+    try:
+        return dict(st.secrets["admin_users"])
+    except Exception:
+        return {}
+
+
+def verifier_identifiants(nom_utilisateur: str, mdp: str) -> bool:
+    utilisateurs = obtenir_utilisateurs_autorises()
+    if not utilisateurs:
+        return False
+    hash_attendu = utilisateurs.get(nom_utilisateur)
+    if not hash_attendu:
+        return False
+    return hacher_mdp(mdp) == hash_attendu
+
+
+def formulaire_connexion():
+    st.markdown('<div class="connexion-carte">', unsafe_allow_html=True)
+    st.markdown('<div class="connexion-titre">🎓 Espace Administration</div>', unsafe_allow_html=True)
+    st.markdown('<div class="connexion-sous">École Privée Diaratigui COULIBALY — Accès réservé au personnel</div>', unsafe_allow_html=True)
+
+    with st.form("form_connexion"):
+        nom_utilisateur = st.text_input("Identifiant")
+        mdp = st.text_input("Mot de passe", type="password")
+        valider = st.form_submit_button("Se connecter", use_container_width=True, type="primary")
+
+    if valider:
+        if not obtenir_utilisateurs_autorises():
+            st.error("Aucun compte administrateur n'est configuré. Contactez la personne responsable du déploiement.")
+        elif verifier_identifiants(nom_utilisateur.strip(), mdp):
+            st.session_state["authentifie"] = True
+            st.session_state["utilisateur"] = nom_utilisateur.strip()
+            st.rerun()
+        else:
+            st.error("Identifiant ou mot de passe incorrect.")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+def exiger_authentification():
+    if "authentifie" not in st.session_state:
+        st.session_state["authentifie"] = False
+    if not st.session_state["authentifie"]:
+        formulaire_connexion()
+        st.stop()
+
+
+def bouton_deconnexion():
+    st.sidebar.markdown(
+        f'<div style="font-size:0.85rem; color:#D9CFAE; margin-bottom:0.4rem;">Connecté : '
+        f'<b>{st.session_state.get("utilisateur", "")}</b></div>',
+        unsafe_allow_html=True
+    )
+    if st.sidebar.button("🔒 Se déconnecter", use_container_width=True):
+        st.session_state["authentifie"] = False
+        st.session_state.pop("utilisateur", None)
+        st.rerun()
+
+
+# La vérification d'authentification s'applique à TOUTE l'application,
+# y compris le mode mobile ?mode=saisie, avant tout accès aux données.
+exiger_authentification()
+
+# ==========================================
+# 3. DONNÉES DE CONFIGURATION & CITATIONS
 # ==========================================
 MATIERES_COEFS = {
     "Rédaction": 3,
@@ -55,7 +289,7 @@ MATIERES_COEFS = {
     "Conduite": 1
 }
 
-TOTAL_COEFFICIENTS = sum(MATIERES_COEFS.values()) # 22
+TOTAL_COEFFICIENTS = sum(MATIERES_COEFS.values())  # 22
 CLASSES = ["7-ème A", "7-ème B", "8-ème A", "8-ème B", "9-ème Année"]
 
 CITATIONS_EDUCATIVES = [
@@ -92,7 +326,7 @@ CITATIONS_EDUCATIVES = [
 ]
 
 # ==========================================
-# 3. FONCTIONS DE CALCUL ET FORMATAGE
+# 4. FONCTIONS DE CALCUL ET FORMATAGE
 # ==========================================
 def fmt_num(val, decimals=2):
     """ Formate un nombre en remplaçant le point décimal par une virgule. """
@@ -104,25 +338,35 @@ def fmt_num(val, decimals=2):
     except (ValueError, TypeError):
         return str(val)
 
+
 def calculer_moyenne_matiere(note_classe, note_compo):
     if note_classe is None or note_compo is None:
         return 0.0
-    moyenne = (float(note_classe) + float(note_compo)) / 3.0
-    return round(moyenne, 2)
+    try:
+        moyenne = (float(note_classe) + float(note_compo)) / 3.0
+        return round(moyenne, 2)
+    except (ValueError, TypeError):
+        return 0.0
+
 
 def calculer_bilan_eleve(notes_dict):
     total_points = 0.0
     for matiere, coef in MATIERES_COEFS.items():
-        m_notes = notes_dict.get(matiere, {})
+        m_notes = notes_dict.get(matiere, {}) if notes_dict else {}
         nc = m_notes.get("classe")
-        np = m_notes.get("compo")
-        moy_mat = calculer_moyenne_matiere(nc, np)
+        npt = m_notes.get("compo")
+        moy_mat = calculer_moyenne_matiere(nc, npt)
         total_points += moy_mat * coef
-        
+
     moyenne_generale = total_points / TOTAL_COEFFICIENTS if TOTAL_COEFFICIENTS > 0 else 0.0
     return round(total_points, 2), round(moyenne_generale, 2)
 
+
 def attribuer_appreciation(moyenne):
+    try:
+        moyenne = float(moyenne)
+    except (ValueError, TypeError):
+        moyenne = 0.0
     if moyenne >= 18:
         return "Excellent"
     elif moyenne >= 16:
@@ -138,9 +382,58 @@ def attribuer_appreciation(moyenne):
     else:
         return "Médiocre"
 
+
+def couleur_appreciation(apprec):
+    palette = {
+        "Excellent": ("#E6F4EC", COULEUR_VERT),
+        "Très-bien": ("#E6F4EC", COULEUR_VERT),
+        "Bien": ("#EFF6E9", "#4C7A2E"),
+        "Assez-bien": ("#FBF3DF", "#8A6A14"),
+        "Passable": ("#FBF0DE", "#A66A1F"),
+        "Insuffisant": ("#FCE9E5", "#B23A2E"),
+        "Médiocre": ("#FCE9E5", "#B23A2E"),
+    }
+    return palette.get(apprec, ("#EEEEEE", COULEUR_TEXTE_DOUX))
+
+
+def normaliser_notes(valeur_brute):
+    """ Garantit que 'notes' est toujours un dict Python exploitable. """
+    if isinstance(valeur_brute, dict):
+        return valeur_brute
+    if isinstance(valeur_brute, str) and valeur_brute.strip():
+        try:
+            return json.loads(valeur_brute)
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def normaliser_eleve(eleve: dict) -> dict:
+    """ Force les types numériques (évite les comparaisons str/Decimal fragiles). """
+    e = dict(eleve)
+    e["notes"] = normaliser_notes(e.get("notes"))
+    try:
+        e["moyenne"] = float(e.get("moyenne") or 0.0)
+    except (ValueError, TypeError):
+        e["moyenne"] = 0.0
+    try:
+        e["total_points"] = float(e.get("total_points") or 0.0)
+    except (ValueError, TypeError):
+        e["total_points"] = 0.0
+    return e
+
+
+# ==========================================
+# 5. ACCÈS BASE DE DONNÉES (avec gestion d'erreurs)
+# ==========================================
 def charger_eleves_db():
-    response = supabase.table("eleves").select("*").execute()
-    return response.data
+    try:
+        response = supabase.table("eleves").select("*").execute()
+        return [normaliser_eleve(e) for e in (response.data or [])]
+    except Exception as e:
+        st.error(f"❌ Impossible de charger les élèves depuis la base de données : {e}")
+        return []
+
 
 def sauvegarder_eleve_db(id_eleve, nom, prenom, classe, notes_dict):
     total_pts, moy_gen = calculer_bilan_eleve(notes_dict)
@@ -152,59 +445,127 @@ def sauvegarder_eleve_db(id_eleve, nom, prenom, classe, notes_dict):
         "total_points": total_pts,
         "moyenne": moy_gen
     }
-    if id_eleve:
-        supabase.table("eleves").update(data).eq("id", id_eleve).execute()
-    else:
-        supabase.table("eleves").insert(data).execute()
+    try:
+        if id_eleve:
+            supabase.table("eleves").update(data).eq("id", id_eleve).execute()
+        else:
+            supabase.table("eleves").insert(data).execute()
+        return True
+    except Exception as e:
+        st.error(f"❌ Échec de l'enregistrement : {e}")
+        return False
+
+
+def modifier_infos_eleve_db(id_eleve, nom, prenom, classe):
+    try:
+        supabase.table("eleves").update({
+            "nom": nom, "prenom": prenom, "classe": classe
+        }).eq("id", id_eleve).execute()
+        return True
+    except Exception as e:
+        st.error(f"❌ Échec de la modification : {e}")
+        return False
+
 
 def supprimer_eleve_db(id_eleve):
-    supabase.table("eleves").delete().eq("id", id_eleve).execute()
+    try:
+        supabase.table("eleves").delete().eq("id", id_eleve).execute()
+        return True
+    except Exception as e:
+        st.error(f"❌ Échec de la suppression : {e}")
+        return False
+
+
+def reinitialiser_notes_classe_db(ids_eleves):
+    """ Vide les notes (après archivage) pour préparer le trimestre suivant. """
+    notes_vides = {m: {"classe": None, "compo": None} for m in MATIERES_COEFS.keys()}
+    try:
+        for id_e in ids_eleves:
+            supabase.table("eleves").update({
+                "notes": notes_vides, "total_points": 0.0, "moyenne": 0.0
+            }).eq("id", id_e).execute()
+        return True
+    except Exception as e:
+        st.error(f"❌ Échec de la réinitialisation : {e}")
+        return False
+
 
 # --- FONCTIONS HISTORIQUE DE BULLETINS ---
-def archiver_bulletins_db(df_classe, annee_scolaire, trimestre):
-    enregistrements = []
-    for i, (_, eleve) in enumerate(df_classe.iterrows()):
-        rang = i + 1
-        notes = eleve.get("notes") or {}
-        if isinstance(notes, str):
-            try:
-                notes = json.loads(notes)
-            except json.JSONDecodeError:
-                notes = {}
-                
-        rec = {
-            "eleve_id": eleve.get("id"),
-            "nom": eleve["nom"],
-            "prenom": eleve["prenom"],
-            "classe": eleve["classe"],
-            "annee_scolaire": annee_scolaire,
-            "trimestre": trimestre,
-            "moyenne": float(eleve["moyenne"]),
-            "total_points": float(eleve["total_points"]),
-            "rang": rang,
-            "notes": notes
-        }
-        enregistrements.append(rec)
-    
+def deja_archive_db(annee_scolaire, trimestre, classe) -> bool:
     try:
+        response = (
+            supabase.table("historique_bulletins")
+            .select("id")
+            .eq("annee_scolaire", annee_scolaire)
+            .eq("trimestre", trimestre)
+            .eq("classe", classe)
+            .limit(1)
+            .execute()
+        )
+        return bool(response.data)
+    except Exception:
+        return False
+
+
+def archiver_bulletins_db(df_classe, annee_scolaire, trimestre, ecraser=False):
+    """
+    Archive les bulletins de la classe. Si 'ecraser' est True et qu'un archivage
+    existant est trouvé pour la même classe/année/trimestre, il est supprimé
+    avant réinsertion afin d'éviter les doublons (bug corrigé).
+    """
+    try:
+        classe_cible = df_classe.iloc[0]["classe"] if not df_classe.empty else ""
+
+        if ecraser:
+            supabase.table("historique_bulletins").delete() \
+                .eq("annee_scolaire", annee_scolaire) \
+                .eq("trimestre", trimestre) \
+                .eq("classe", classe_cible) \
+                .execute()
+
+        enregistrements = []
+        for i, (_, eleve) in enumerate(df_classe.iterrows()):
+            rang = i + 1
+            notes = normaliser_notes(eleve.get("notes"))
+            rec = {
+                "eleve_id": eleve.get("id"),
+                "nom": eleve["nom"],
+                "prenom": eleve["prenom"],
+                "classe": eleve["classe"],
+                "annee_scolaire": annee_scolaire,
+                "trimestre": trimestre,
+                "moyenne": float(eleve["moyenne"]),
+                "total_points": float(eleve["total_points"]),
+                "rang": rang,
+                "notes": notes
+            }
+            enregistrements.append(rec)
+
         supabase.table("historique_bulletins").insert(enregistrements).execute()
+        return True
     except Exception as e:
-        st.warning(f"Note : Archivage : {e}")
+        st.error(f"❌ Échec de l'archivage : {e}")
+        return False
+
 
 def charger_historique_db(annee=None, trimestre=None, classe=None):
-    query = supabase.table("historique_bulletins").select("*")
-    if annee:
-        query = query.eq("annee_scolaire", annee)
-    if trimestre:
-        query = query.eq("trimestre", trimestre)
-    if classe:
-        query = query.eq("classe", classe)
-    
-    response = query.order("created_at", desc=True).execute()
-    return response.data
+    try:
+        query = supabase.table("historique_bulletins").select("*")
+        if annee:
+            query = query.eq("annee_scolaire", annee)
+        if trimestre:
+            query = query.eq("trimestre", trimestre)
+        if classe:
+            query = query.eq("classe", classe)
+        response = query.order("created_at", desc=True).execute()
+        return response.data or []
+    except Exception as e:
+        st.error(f"❌ Impossible de charger l'historique : {e}")
+        return []
+
 
 # ==========================================
-# 4. GÉNÉRATION PDF MULTI-BULLETINS (REPORTLAB)
+# 6. GÉNÉRATION PDF MULTI-BULLETINS (REPORTLAB)
 # ==========================================
 def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
     buffer = io.BytesIO()
@@ -222,15 +583,15 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
 
     style_header_left = ParagraphStyle('HLeft', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=12)
     style_header_right = ParagraphStyle('HRight', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=12, alignment=TA_RIGHT)
-    style_title = ParagraphStyle('Title', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=14, leading=17, alignment=TA_CENTER, textColor=colors.HexColor('#0F2C59'))
+    style_title = ParagraphStyle('Title', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=14, leading=17, alignment=TA_CENTER, textColor=colors.HexColor(COULEUR_MARINE))
     style_body = ParagraphStyle('Body', parent=styles['Normal'], fontName='Helvetica', fontSize=10, leading=14)
     style_body_bold = ParagraphStyle('BodyBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=14)
-    
+
     style_cell = ParagraphStyle('Cell', parent=styles['Normal'], fontName='Helvetica', fontSize=8.5, leading=11)
     style_cell_bold = ParagraphStyle('CellBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8.5, leading=11)
     style_cell_center = ParagraphStyle('CellCenter', parent=styles['Normal'], fontName='Helvetica', fontSize=8.5, leading=11, alignment=TA_CENTER)
     style_cell_center_bold = ParagraphStyle('CellCenterBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8.5, leading=11, alignment=TA_CENTER)
-    
+
     style_citation = ParagraphStyle('Citation', parent=styles['Italic'], fontName='Helvetica-Oblique', fontSize=8, leading=10, alignment=TA_CENTER, textColor=colors.HexColor('#4B5563'))
 
     total_eleves = len(df_classe)
@@ -238,24 +599,19 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
     for i, (_, eleve_obj) in enumerate(df_classe.iterrows()):
         rang = i + 1
         suffix_rang = "ère" if rang == 1 else "ème"
-        
-        notes_actuelles = eleve_obj.get("notes") or {}
-        if isinstance(notes_actuelles, str):
-            try:
-                notes_actuelles = json.loads(notes_actuelles)
-            except json.JSONDecodeError:
-                notes_actuelles = {}
+
+        notes_actuelles = normaliser_notes(eleve_obj.get("notes"))
 
         LOGO_PATH = "logo.png"
         if os.path.exists(LOGO_PATH):
             try:
                 logo_img = Image(LOGO_PATH, width=50, height=50)
             except Exception:
-                logo_img = Paragraph("<font size=12 color='#0F2C59'><b>EPDC</b></font>", style_cell_center_bold)
+                logo_img = Paragraph(f"<font size=12 color='{COULEUR_MARINE}'><b>EPDC</b></font>", style_cell_center_bold)
         else:
-            logo_img = Paragraph("<font size=12 color='#0F2C59'><b>EPDC</b></font>", style_cell_center_bold)
+            logo_img = Paragraph(f"<font size=12 color='{COULEUR_MARINE}'><b>EPDC</b></font>", style_cell_center_bold)
 
-        header_right_text = f"ANNÉE SCOLAIRE : {annee_scolaire}<br/><font color='#1E3A8A'><b>{trimestre}</b></font>"
+        header_right_text = f"ANNÉE SCOLAIRE : {annee_scolaire}<br/><font color='{COULEUR_MARINE}'><b>{trimestre}</b></font>"
 
         header_data = [
             [
@@ -266,8 +622,8 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
         ]
         t_header = Table(header_data, colWidths=[210, 110, 210])
         t_header.setStyle(TableStyle([
-            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('ALIGN', (1,0), (1,0), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ALIGN', (1, 0), (1, 0), 'CENTER'),
         ]))
         story.append(t_header)
         story.append(Spacer(1, 10))
@@ -294,13 +650,13 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
         for mat, coef in MATIERES_COEFS.items():
             m_data = notes_actuelles.get(mat, {})
             nc = m_data.get("classe")
-            np = m_data.get("compo")
+            npt = m_data.get("compo")
 
             txt_nc = fmt_num(nc) if nc is not None else ""
-            txt_np = fmt_num(np) if np is not None else ""
+            txt_np = fmt_num(npt) if npt is not None else ""
 
-            if nc is not None and np is not None:
-                moy_m = calculer_moyenne_matiere(nc, np)
+            if nc is not None and npt is not None:
+                moy_m = calculer_moyenne_matiere(nc, npt)
                 pts = round(moy_m * coef, 2)
                 txt_moy = fmt_num(moy_m)
                 txt_pts = fmt_num(pts)
@@ -332,17 +688,17 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
 
         t_notes = Table(table_data, colWidths=[110, 65, 65, 65, 45, 80, 100])
         t_notes.setStyle(TableStyle([
-            ('GRID', (0,0), (-1,-1), 0.8, colors.black),
-            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-            ('TOPPADDING', (0,0), (-1,-1), 3),
+            ('GRID', (0, 0), (-1, -1), 0.8, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
         ]))
         story.append(t_notes)
         story.append(Spacer(1, 10))
 
         moy_gen = float(eleve_obj['moyenne'])
         apprec_gen = attribuer_appreciation(moy_gen)
-        
+
         if moy_gen >= 14:
             mention = "FELICITATIONS !"
         elif moy_gen >= 12:
@@ -355,7 +711,7 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
         story.append(Spacer(1, 4))
         story.append(Paragraph(f"<b>{mention}</b>", style_body_bold))
         story.append(Paragraph(f"<b>Appréciation :</b> {apprec_gen} !", style_body))
-        
+
         story.append(Spacer(1, -15))
         story.append(Paragraph("Signature du directeur", style_header_right))
         story.append(Spacer(1, 60))
@@ -363,11 +719,11 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
         citation = CITATIONS_EDUCATIVES[i % len(CITATIONS_EDUCATIVES)]
         t_citation = Table([[Paragraph(f"💡 <i>{citation}</i>", style_citation)]], colWidths=[530])
         t_citation.setStyle(TableStyle([
-            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('LINEABOVE', (0,0), (-1,0), 0.5, colors.HexColor('#CBD5E1')),
-            ('TOPPADDING', (0,0), (-1,-1), 4),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LINEABOVE', (0, 0), (-1, 0), 0.5, colors.HexColor('#CBD5E1')),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ]))
         story.append(t_citation)
 
@@ -380,14 +736,15 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
 
 
 # ==========================================
-# 5. GESTION DU MODE DE NAVIGATION STREAMLIT
+# 7. GESTION DU MODE DE NAVIGATION STREAMLIT
 # ==========================================
 query_params = st.query_params
 mode_mobile = query_params.get("mode") == "saisie"
 
 if mode_mobile:
+    bouton_deconnexion()
     st.title("📱 Saisie des Notes")
-    st.info("Interface optimisée pour smartphones")
+    st.caption("Interface optimisée pour smartphones — accès réservé au personnel administratif")
 
     eleves_data = charger_eleves_db()
     if not eleves_data:
@@ -406,18 +763,13 @@ if mode_mobile:
     nom_eleve_sel = st.selectbox("Sélectionner l'élève :", list(eleve_options.keys()))
     eleve_obj = eleve_options[nom_eleve_sel]
 
-    notes_actuelles = eleve_obj.get("notes") or {}
-    if isinstance(notes_actuelles, str):
-        try:
-            notes_actuelles = json.loads(notes_actuelles)
-        except json.JSONDecodeError:
-            notes_actuelles = {}
+    notes_actuelles = normaliser_notes(eleve_obj.get("notes"))
 
     st.subheader(f"Élève : {eleve_obj['nom']} {eleve_obj['prenom']}")
 
     with st.form("form_saisie_mobile_complet"):
         nouv_notes = {}
-        
+
         for mat, coef in MATIERES_COEFS.items():
             m_data = notes_actuelles.get(mat, {})
             val_cl = float(m_data.get("classe")) if m_data.get("classe") is not None else None
@@ -425,20 +777,20 @@ if mode_mobile:
 
             st.markdown(f"**{mat}** *(Coef: {coef})*")
             col_cl, col_co = st.columns(2)
-            
+
             with col_cl:
                 nc = st.number_input("Classe /20", min_value=0.0, max_value=20.0, value=val_cl, step=0.5, key=f"m_cl_{mat}")
             with col_co:
-                np = st.number_input("Compo /40", min_value=0.0, max_value=40.0, value=val_co, step=0.5, key=f"m_cp_{mat}")
-            
-            if nc is not None and np is not None:
-                moy_m = calculer_moyenne_matiere(nc, np)
+                npt = st.number_input("Compo /40", min_value=0.0, max_value=40.0, value=val_co, step=0.5, key=f"m_cp_{mat}")
+
+            if nc is not None and npt is not None:
+                moy_m = calculer_moyenne_matiere(nc, npt)
                 st.caption(f"Moyenne : {fmt_num(moy_m)} / 20")
             else:
                 st.caption("Moyenne : -- / 20")
-                
+
             st.markdown("---")
-            nouv_notes[mat] = {"classe": nc, "compo": np}
+            nouv_notes[mat] = {"classe": nc, "compo": npt}
 
         btn_valider = st.form_submit_button("Enregistrer toutes les notes 💾", use_container_width=True)
 
@@ -447,13 +799,17 @@ if mode_mobile:
         if champs_incomplets:
             st.error(f"❌ Veuillez remplir toutes les notes avant d'enregistrer. Matières incomplètes : {', '.join(champs_incomplets)}")
         else:
-            sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], nouv_notes)
-            st.success("Toutes les notes ont été enregistrées avec succès !")
-            st.rerun()
+            if sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], nouv_notes):
+                st.success("Toutes les notes ont été enregistrées avec succès !")
+                st.rerun()
 
 else:
-    st.sidebar.title("🏛️ Administration Centralisée")
-    st.sidebar.write("École Privée Diaratigui COULIBALY")
+    st.sidebar.markdown(
+        '<div class="marque-ecole"><div class="nom">🎓 École Privée<br/>Diaratigui COULIBALY</div>'
+        '<div class="lieu">CAP Kalaban-Coro · Administration</div></div>',
+        unsafe_allow_html=True
+    )
+    bouton_deconnexion()
 
     st.sidebar.markdown("---")
     st.sidebar.subheader("⚙️ Configuration Bulletins")
@@ -477,45 +833,81 @@ else:
 
     eleves_data = charger_eleves_db()
 
+    # ------------------------------------------------------------
+    # 1. GESTION DES ÉLÈVES
+    # ------------------------------------------------------------
     if menu == "1. Gestion des Élèves":
         st.header("👤 Inscription et Gestion des Élèves")
-        
+
         col1, col2 = st.columns([1, 2])
         with col1:
+            st.markdown('<div class="carte">', unsafe_allow_html=True)
             with st.form("form_inscript"):
                 st.subheader("Nouvel Élève")
                 nom = st.text_input("Nom de famille :")
                 prenom = st.text_input("Prénom :")
                 classe = st.selectbox("Classe :", CLASSES)
-                btn_ajouter = st.form_submit_button("Ajouter à la base")
+                btn_ajouter = st.form_submit_button("Ajouter à la base", type="primary", use_container_width=True)
 
-                if btn_ajouter and nom and prenom:
-                    notes_vides = {m: {"classe": None, "compo": None} for m in MATIERES_COEFS.keys()}
-                    sauvegarder_eleve_db(None, nom.upper(), prenom.title(), classe, notes_vides)
-                    st.success("Élève inscrit avec succès !")
-                    st.rerun()
+                if btn_ajouter:
+                    if not nom.strip() or not prenom.strip():
+                        st.error("Le nom et le prénom sont obligatoires.")
+                    else:
+                        notes_vides = {m: {"classe": None, "compo": None} for m in MATIERES_COEFS.keys()}
+                        if sauvegarder_eleve_db(None, nom.strip().upper(), prenom.strip().title(), classe, notes_vides):
+                            st.success("Élève inscrit avec succès !")
+                            st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
         with col2:
             st.subheader("Effectif enregistré")
             if eleves_data:
                 df = pd.DataFrame(eleves_data)
                 st.dataframe(df[["id", "nom", "prenom", "classe", "moyenne", "total_points"]], use_container_width=True)
-                
+
                 st.markdown("---")
-                st.subheader("🗑️ Supprimer un élève")
-                
-                eleve_suppr_options = {f"{row['nom']} {row['prenom']} ({row['classe']})": row['id'] for _, row in df.iterrows()}
-                eleve_a_supprimer_label = st.selectbox("Sélectionner l'élève à supprimer :", list(eleve_suppr_options.keys()))
-                
-                id_a_supprimer = eleve_suppr_options[eleve_a_supprimer_label]
-                
-                if st.button("❌ Supprimer définitivement cet élève", type="primary"):
-                    supprimer_eleve_db(id_a_supprimer)
-                    st.success("L'élève a été supprimé de la base de données.")
-                    st.rerun()
+                st.subheader("✏️ Modifier / 🗑️ Supprimer un élève")
+
+                eleve_map = {f"{row['nom']} {row['prenom']} ({row['classe']})": row for _, row in df.iterrows()}
+                eleve_label = st.selectbox("Sélectionner un élève :", list(eleve_map.keys()), key="sel_modif")
+                eleve_cible = eleve_map[eleve_label]
+
+                with st.expander("✏️ Modifier les informations de cet élève"):
+                    with st.form("form_modif_eleve"):
+                        nv_nom = st.text_input("Nom", value=eleve_cible["nom"])
+                        nv_prenom = st.text_input("Prénom", value=eleve_cible["prenom"])
+                        nv_classe = st.selectbox("Classe", CLASSES, index=CLASSES.index(eleve_cible["classe"]) if eleve_cible["classe"] in CLASSES else 0)
+                        btn_modif = st.form_submit_button("Enregistrer les modifications", type="primary")
+
+                    if btn_modif:
+                        if modifier_infos_eleve_db(eleve_cible["id"], nv_nom.strip().upper(), nv_prenom.strip().title(), nv_classe):
+                            st.success("Informations mises à jour.")
+                            st.rerun()
+
+                # Suppression en deux étapes pour éviter les clics accidentels
+                cle_confirmation = "confirmer_suppression_id"
+                if st.button("❌ Supprimer définitivement cet élève"):
+                    st.session_state[cle_confirmation] = eleve_cible["id"]
+
+                if st.session_state.get(cle_confirmation) == eleve_cible["id"]:
+                    st.warning(f"Confirmer la suppression définitive de **{eleve_cible['nom']} {eleve_cible['prenom']}** ? Cette action est irréversible.")
+                    c_oui, c_non = st.columns(2)
+                    with c_oui:
+                        if st.button("✅ Oui, supprimer", type="primary", use_container_width=True):
+                            if supprimer_eleve_db(eleve_cible["id"]):
+                                st.session_state.pop(cle_confirmation, None)
+                                st.success("L'élève a été supprimé de la base de données.")
+                                st.rerun()
+                    with c_non:
+                        if st.button("Annuler", use_container_width=True):
+                            st.session_state.pop(cle_confirmation, None)
+                            st.rerun()
             else:
                 st.info("Aucun élève enregistré.")
 
+    # ------------------------------------------------------------
+    # 2. SAISIE DES NOTES (PC)
+    # ------------------------------------------------------------
     elif menu == "2. Saisie des Notes (PC)":
         st.header("📝 Saisie Globale des Notes")
         if not eleves_data:
@@ -534,12 +926,7 @@ else:
         nom_eleve_sel = st.selectbox("Choisir l'élève :", list(eleve_options.keys()))
         eleve_obj = eleve_options[nom_eleve_sel]
 
-        notes_actuelles = eleve_obj.get("notes") or {}
-        if isinstance(notes_actuelles, str):
-            try:
-                notes_actuelles = json.loads(notes_actuelles)
-            except json.JSONDecodeError:
-                notes_actuelles = {}
+        notes_actuelles = normaliser_notes(eleve_obj.get("notes"))
 
         st.subheader(f"Édition du bulletin : {eleve_obj['nom']} {eleve_obj['prenom']} ({classe_sel})")
 
@@ -559,27 +946,30 @@ else:
                 c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
                 c1.write(f"{mat} (**{coef}**)")
                 nc = c2.number_input(f"cl_{mat}", min_value=0.0, max_value=20.0, value=val_cl, step=0.5, label_visibility="collapsed")
-                np = c3.number_input(f"cp_{mat}", min_value=0.0, max_value=40.0, value=val_co, step=0.5, label_visibility="collapsed")
-                
-                if nc is not None and np is not None:
-                    moy_m = calculer_moyenne_matiere(nc, np)
+                npt = c3.number_input(f"cp_{mat}", min_value=0.0, max_value=40.0, value=val_co, step=0.5, label_visibility="collapsed")
+
+                if nc is not None and npt is not None:
+                    moy_m = calculer_moyenne_matiere(nc, npt)
                     c4.write(f"**{fmt_num(moy_m)}**")
                 else:
                     c4.write("--")
-                
-                nouv_notes[mat] = {"classe": nc, "compo": np}
 
-            btn_save = st.form_submit_button("Enregistrer toutes les notes 💾")
+                nouv_notes[mat] = {"classe": nc, "compo": npt}
+
+            btn_save = st.form_submit_button("Enregistrer toutes les notes 💾", type="primary")
 
         if btn_save:
             champs_incomplets = [m for m, v in nouv_notes.items() if v["classe"] is None or v["compo"] is None]
             if champs_incomplets:
                 st.error(f"❌ Veuillez remplir toutes les notes avant d'enregistrer. Matières incomplètes : {', '.join(champs_incomplets)}")
             else:
-                sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], nouv_notes)
-                st.success("Toutes les notes ont été mises à jour !")
-                st.rerun()
+                if sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], nouv_notes):
+                    st.success("Toutes les notes ont été mises à jour !")
+                    st.rerun()
 
+    # ------------------------------------------------------------
+    # 3. CLASSEMENT & RÉSULTATS
+    # ------------------------------------------------------------
     elif menu == "3. Classement & Résultats":
         st.header("🏆 Classement Général par Classe")
         if not eleves_data:
@@ -597,11 +987,20 @@ else:
             df_classe["Rang"] = df_classe.index + 1
             df_classe["Appréciation"] = df_classe["moyenne"].apply(attribuer_appreciation)
 
+            moy_classe = df_classe["moyenne"].mean()
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Effectif", len(df_classe))
+            c2.metric("Moyenne de classe", fmt_num(moy_classe))
+            c3.metric("Meilleure moyenne", fmt_num(df_classe["moyenne"].max()))
+
             st.dataframe(
                 df_classe[["Rang", "nom", "prenom", "total_points", "moyenne", "Appréciation"]],
                 use_container_width=True
             )
 
+    # ------------------------------------------------------------
+    # 4. IMPRESSION DES BULLETINS
+    # ------------------------------------------------------------
     elif menu == "4. Impression des Bulletins":
         st.header("🖨️ Impression des Bulletins")
         if not eleves_data:
@@ -610,7 +1009,7 @@ else:
 
         df_eleves = pd.DataFrame(eleves_data)
         classe_sel = st.selectbox("Classe :", CLASSES, key="imp_cl")
-        
+
         df_classe = df_eleves[df_eleves["classe"] == classe_sel].sort_values(by="moyenne", ascending=False).reset_index(drop=True)
 
         if df_classe.empty:
@@ -618,22 +1017,50 @@ else:
             st.stop()
 
         st.markdown("---")
-        
+
         pdf_data = generer_pdf_bulletins_classe(df_classe, annee_scolaire_input, trimestre_input)
-        
-        col_btn1, col_btn2 = st.columns([2, 1])
-        with col_btn1:
-            btn_dl = st.download_button(
-                label=f"📄 Télécharger TOUS les bulletins ({classe_sel}) - {trimestre_input} en PDF",
+
+        col_dl, col_arch = st.columns(2)
+        with col_dl:
+            st.download_button(
+                label=f"📄 Télécharger TOUS les bulletins ({classe_sel}) — {trimestre_input}",
                 data=pdf_data,
                 file_name=f"Bulletins_{classe_sel.replace(' ', '_')}_{trimestre_input.replace(' ', '_')}.pdf",
                 mime="application/pdf",
-                type="primary"
+                use_container_width=True
             )
-        
-        if btn_dl:
-            archiver_bulletins_db(df_classe, annee_scolaire_input, trimestre_input)
-            st.success("✅ Bulletins générés et archivés avec succès !")
+
+        # --- Archivage séparé du téléchargement, avec détection des doublons ---
+        deja_present = deja_archive_db(annee_scolaire_input, trimestre_input, classe_sel)
+        with col_arch:
+            if deja_present:
+                st.warning(f"⚠️ Un archivage existe déjà pour {classe_sel} — {trimestre_input} ({annee_scolaire_input}).")
+                if st.button("🔁 Écraser l'archivage existant", use_container_width=True):
+                    if archiver_bulletins_db(df_classe, annee_scolaire_input, trimestre_input, ecraser=True):
+                        st.success("✅ Archivage mis à jour (l'ancien a été remplacé).")
+            else:
+                if st.button("🗄️ Archiver dans l'historique", type="primary", use_container_width=True):
+                    if archiver_bulletins_db(df_classe, annee_scolaire_input, trimestre_input, ecraser=False):
+                        st.success("✅ Bulletins archivés avec succès !")
+
+        with st.expander("🔄 Clôturer ce trimestre pour cette classe (réinitialise les notes)"):
+            st.caption("À utiliser une fois les bulletins archivés, pour repartir sur des notes vierges au trimestre suivant. Cette action ne supprime pas l'historique déjà archivé.")
+            if st.button("Réinitialiser les notes de cette classe", key="reset_trim"):
+                st.session_state["confirmer_reset"] = classe_sel
+
+            if st.session_state.get("confirmer_reset") == classe_sel:
+                st.error(f"Confirmer la réinitialisation des notes de **{classe_sel}** ? Cette action est irréversible.")
+                c_oui, c_non = st.columns(2)
+                with c_oui:
+                    if st.button("✅ Oui, réinitialiser", type="primary", key="reset_oui"):
+                        if reinitialiser_notes_classe_db(df_classe["id"].tolist()):
+                            st.session_state.pop("confirmer_reset", None)
+                            st.success("Notes réinitialisées pour la classe.")
+                            st.rerun()
+                with c_non:
+                    if st.button("Annuler", key="reset_non"):
+                        st.session_state.pop("confirmer_reset", None)
+                        st.rerun()
 
         st.markdown("---")
         st.subheader("Aperçu individuel à l'écran")
@@ -643,24 +1070,19 @@ else:
         idx_eleve, eleve_obj = eleve_options[nom_sel]
         rang_eleve = idx_eleve + 1
 
-        notes_actuelles = eleve_obj.get("notes") or {}
-        if isinstance(notes_actuelles, str):
-            try:
-                notes_actuelles = json.loads(notes_actuelles)
-            except json.JSONDecodeError:
-                notes_actuelles = {}
+        notes_actuelles = normaliser_notes(eleve_obj.get("notes"))
 
         rows_html = ""
         for mat, coef in MATIERES_COEFS.items():
             m_data = notes_actuelles.get(mat, {})
             nc = m_data.get("classe")
-            np = m_data.get("compo")
-            
+            npt = m_data.get("compo")
+
             txt_nc = fmt_num(nc) if nc is not None else ""
-            txt_np = fmt_num(np) if np is not None else ""
-            
-            if nc is not None and np is not None:
-                moy_m = calculer_moyenne_matiere(nc, np)
+            txt_np = fmt_num(npt) if npt is not None else ""
+
+            if nc is not None and npt is not None:
+                moy_m = calculer_moyenne_matiere(nc, npt)
                 pts = round(moy_m * coef, 2)
                 txt_moy = fmt_num(moy_m)
                 txt_pts = fmt_num(pts)
@@ -681,10 +1103,11 @@ else:
                 <td style="padding: 6px 8px; border-left: 1px solid #ccc;">{apprec_mat}</td>
             </tr>"""
 
-        apprec_generale = attribuer_appreciation(float(eleve_obj['moyenne']))
+        apprec_generale = attribuer_appreciation(eleve_obj['moyenne'])
         suffix_rang = "ère" if rang_eleve == 1 else "ème"
         citation_apercu = CITATIONS_EDUCATIVES[idx_eleve % len(CITATIONS_EDUCATIVES)]
-        mention = "FELICITATIONS !" if eleve_obj['moyenne'] >= 14 else "ENCOURAGEMENTS !" if eleve_obj['moyenne'] >= 12 else "PEUT MIEUX FAIRE"
+        moy_gen_val = float(eleve_obj['moyenne'])
+        mention = "FELICITATIONS !" if moy_gen_val >= 14 else "ENCOURAGEMENTS !" if moy_gen_val >= 12 else "PEUT MIEUX FAIRE"
 
         bulletin_html = textwrap.dedent(f"""
         <div style="background-color: #ffffff; color: #000000; padding: 25px; border: 1px solid #ccc; border-radius: 6px; font-family: 'Times New Roman', Times, serif; max-width: 800px; margin: auto;">
@@ -695,15 +1118,15 @@ else:
                     Classe : {eleve_obj['classe']}
                 </div>
                 <div style="width: 24%; text-align: center;">
-                    <div style="font-size: 22px; color: #0F2C59; font-weight: bold;">EPDC</div>
+                    <div style="font-size: 22px; color: {COULEUR_MARINE}; font-weight: bold;">EPDC</div>
                 </div>
                 <div style="width: 38%; text-align: right; line-height: 1.4;">
                     ANNÉE SCOLAIRE : {annee_scolaire_input}<br>
-                    <span style="color: #1E3A8A;">{trimestre_input}</span>
+                    <span style="color: {COULEUR_MARINE};">{trimestre_input}</span>
                 </div>
             </div>
 
-            <div style="text-align: center; font-size: 18px; font-weight: bold; text-decoration: underline; margin: 20px 0; color: #0F2C59;">
+            <div style="text-align: center; font-size: 18px; font-weight: bold; text-decoration: underline; margin: 20px 0; color: {COULEUR_MARINE};">
                 BULLETIN DE NOTES - {trimestre_input}
             </div>
 
@@ -759,9 +1182,12 @@ else:
 
         components.html(bulletin_html, height=850, scrolling=True)
 
+    # ------------------------------------------------------------
+    # 5. HISTORIQUE DES BULLETINS
+    # ------------------------------------------------------------
     elif menu == "5. Historique des Bulletins 📜":
         st.header("📜 Historique des Bulletins Archivés")
-        
+
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1:
             annee_h = st.text_input("Filtrer par année", value="")
