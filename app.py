@@ -29,13 +29,15 @@ st.set_page_config(
 # ------------------------------------------
 # Palette & typographie (voir bloc CSS plus bas)
 # ------------------------------------------
-COULEUR_FOND = "#F7F3EA"
+COULEUR_FOND = "#0E2240"
 COULEUR_MARINE = "#13294B"
 COULEUR_OR = "#C89B3C"
 COULEUR_VERT = "#1E6F50"
-COULEUR_TEXTE = "#1C1C1C"
-COULEUR_TEXTE_DOUX = "#5B5B5B"
-COULEUR_BORDURE = "#E3DCC9"
+COULEUR_TEXTE = "#F2EFE6"
+COULEUR_TEXTE_DOUX = "#B9C4D6"
+COULEUR_BORDURE = "#2E4E7C"
+COULEUR_TEXTE_CARTE = "#1C1C1C"
+COULEUR_TEXTE_CARTE_DOUX = "#5B5B5B"
 
 
 def injecter_css():
@@ -55,7 +57,7 @@ def injecter_css():
 
         h1, h2, h3 {{
             font-family: 'Lora', serif !important;
-            color: {COULEUR_MARINE} !important;
+            color: {COULEUR_OR} !important;
             font-weight: 600 !important;
         }}
 
@@ -128,6 +130,12 @@ def injecter_css():
             padding: 1.25rem 1.5rem;
             margin-bottom: 1rem;
         }}
+        .carte, .carte p, .carte span, .carte label, .carte div {{
+            color: {COULEUR_TEXTE_CARTE} !important;
+        }}
+        .carte h1, .carte h2, .carte h3 {{
+            color: {COULEUR_MARINE} !important;
+        }}
 
         .badge {{
             display: inline-block;
@@ -155,7 +163,7 @@ def injecter_css():
         }}
         .connexion-sous {{
             text-align: center;
-            color: {COULEUR_TEXTE_DOUX};
+            color: {COULEUR_TEXTE_CARTE_DOUX};
             font-size: 0.9rem;
             margin-bottom: 1.5rem;
         }}
@@ -393,7 +401,7 @@ def couleur_appreciation(apprec):
         "Insuffisant": ("#FCE9E5", "#B23A2E"),
         "Médiocre": ("#FCE9E5", "#B23A2E"),
     }
-    return palette.get(apprec, ("#EEEEEE", COULEUR_TEXTE_DOUX))
+    return palette.get(apprec, ("#EEEEEE", COULEUR_TEXTE_CARTE_DOUX))
 
 
 def normaliser_notes(valeur_brute):
