@@ -575,6 +575,31 @@ def charger_historique_db(annee=None, trimestre=None, classe=None):
 # ==========================================
 # 6. GÉNÉRATION PDF MULTI-BULLETINS (REPORTLAB)
 # ==========================================
+def dessiner_cadre_page(canvas_obj, doc):
+    """ Dessine un cadre décoratif et un pied de page fixe sur chaque page,
+    afin que la page imprimée soit toujours pleinement occupée visuellement,
+    même quand le contenu du bulletin ne remplit pas toute la hauteur. """
+    canvas_obj.saveState()
+    largeur, hauteur = A4
+    marge_ext = 14
+
+    canvas_obj.setStrokeColor(colors.HexColor(COULEUR_MARINE))
+    canvas_obj.setLineWidth(1.1)
+    canvas_obj.rect(marge_ext, marge_ext, largeur - 2 * marge_ext, hauteur - 2 * marge_ext)
+
+    canvas_obj.setStrokeColor(colors.HexColor(COULEUR_OR))
+    canvas_obj.setLineWidth(0.6)
+    marge_int = marge_ext + 4
+    canvas_obj.rect(marge_int, marge_int, largeur - 2 * marge_int, hauteur - 2 * marge_int)
+
+    canvas_obj.setFont("Helvetica-Oblique", 7.5)
+    canvas_obj.setFillColor(colors.HexColor("#6B7280"))
+    texte_pied = "École Privée Diaratigui COULIBALY — CAP Kalaban-Coro — Document officiel à conserver"
+    canvas_obj.drawCentredString(largeur / 2, marge_ext + 9, texte_pied)
+
+    canvas_obj.restoreState()
+
+
 def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -698,11 +723,11 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
         t_notes.setStyle(TableStyle([
             ('GRID', (0, 0), (-1, -1), 0.8, colors.black),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
+            ('TOPPADDING', (0, 0), (-1, -1), 7),
         ]))
         story.append(t_notes)
-        story.append(Spacer(1, 10))
+        story.append(Spacer(1, 14))
 
         moy_gen = float(eleve_obj['moyenne'])
         apprec_gen = attribuer_appreciation(moy_gen)
@@ -720,9 +745,30 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
         story.append(Paragraph(f"<b>{mention}</b>", style_body_bold))
         story.append(Paragraph(f"<b>Appréciation :</b> {apprec_gen} !", style_body))
 
-        story.append(Spacer(1, -15))
-        story.append(Paragraph("Signature du directeur", style_header_right))
-        story.append(Spacer(1, 60))
+        story.append(Spacer(1, 12))
+        style_obs_titre = ParagraphStyle('ObsTitre', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9.5, leading=12, textColor=colors.HexColor(COULEUR_MARINE))
+        story.append(Paragraph("Observations du Professeur Principal :", style_obs_titre))
+        story.append(Spacer(1, 5))
+        t_observations = Table([[""]], colWidths=[530], rowHeights=[50])
+        t_observations.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 0.8, colors.HexColor('#9AA5B1')),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ]))
+        story.append(t_observations)
+        story.append(Spacer(1, 16))
+
+        t_signatures = Table(
+            [[
+                Paragraph("_________________________<br/><b>Visa du Parent / Tuteur</b>", style_body),
+                Paragraph("_________________________<br/><b>Signature du Directeur</b>", style_header_right)
+            ]],
+            colWidths=[265, 265]
+        )
+        t_signatures.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ]))
+        story.append(t_signatures)
+        story.append(Spacer(1, 14))
 
         citation = CITATIONS_EDUCATIVES[i % len(CITATIONS_EDUCATIVES)]
         t_citation = Table([[Paragraph(f"💡 <i>{citation}</i>", style_citation)]], colWidths=[530])
@@ -738,7 +784,7 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
         if i < total_eleves - 1:
             story.append(PageBreak())
 
-    doc.build(story)
+    doc.build(story, onFirstPage=dessiner_cadre_page, onLaterPages=dessiner_cadre_page)
     buffer.seek(0)
     return buffer.getvalue()
 
