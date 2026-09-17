@@ -16,6 +16,9 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, Image
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 
+# Nom du fichier du logo
+LOGO_FILENAME = "logo_epdc_cercle.png"
+
 # ==========================================
 # 1. CONFIGURATION DE LA PAGE & SUPABASE
 # ==========================================
@@ -27,7 +30,7 @@ st.set_page_config(
 )
 
 # ------------------------------------------
-# Palette & typographie (voir bloc CSS plus bas)
+# Palette & typographie
 # ------------------------------------------
 COULEUR_FOND = "#0E2240"
 COULEUR_MARINE = "#13294B"
@@ -201,16 +204,6 @@ except Exception:
 # ==========================================
 # 2. AUTHENTIFICATION ADMINISTRATION
 # ==========================================
-# Les identifiants autorisés sont définis dans st.secrets, sous la forme :
-#
-# [admin_users]
-# directeur = "b8f3c9...hash_sha256..."
-# secretaire = "a12de4...hash_sha256..."
-#
-# Pour générer le hash d'un mot de passe, exécuter en local :
-#   python3 -c "import hashlib; print(hashlib.sha256('MonMotDePasse'.encode()).hexdigest())"
-# et copier le résultat dans les secrets. Ne jamais stocker de mot de passe en clair.
-
 def hacher_mdp(mdp: str) -> str:
     return hashlib.sha256(mdp.encode("utf-8")).hexdigest()
 
@@ -275,8 +268,6 @@ def bouton_deconnexion():
         st.rerun()
 
 
-# La vérification d'authentification s'applique à TOUTE l'application,
-# y compris le mode mobile ?mode=saisie, avant tout accès aux données.
 exiger_authentification()
 
 # ==========================================
@@ -337,7 +328,6 @@ CITATIONS_EDUCATIVES = [
 # 4. FONCTIONS DE CALCUL ET FORMATAGE
 # ==========================================
 def fmt_num(val, decimals=2):
-    """ Formate un nombre en remplaçant le point décimal par une virgule. """
     if val is None or val == "":
         return ""
     try:
@@ -405,7 +395,6 @@ def couleur_appreciation(apprec):
 
 
 def normaliser_notes(valeur_brute):
-    """ Garantit que 'notes' est toujours un dict Python exploitable. """
     if isinstance(valeur_brute, dict):
         return valeur_brute
     if isinstance(valeur_brute, str) and valeur_brute.strip():
@@ -417,7 +406,6 @@ def normaliser_notes(valeur_brute):
 
 
 def normaliser_eleve(eleve: dict) -> dict:
-    """ Force les types numériques (évite les comparaisons str/Decimal fragiles). """
     e = dict(eleve)
     e["notes"] = normaliser_notes(e.get("notes"))
     try:
@@ -432,7 +420,7 @@ def normaliser_eleve(eleve: dict) -> dict:
 
 
 # ==========================================
-# 5. ACCÈS BASE DE DONNÉES (avec gestion d'erreurs)
+# 5. ACCÈS BASE DE DONNÉES
 # ==========================================
 def charger_eleves_db():
     try:
@@ -485,7 +473,6 @@ def supprimer_eleve_db(id_eleve):
 
 
 def reinitialiser_notes_classe_db(ids_eleves):
-    """ Vide les notes (après archivage) pour préparer le trimestre suivant. """
     notes_vides = {m: {"classe": None, "compo": None} for m in MATIERES_COEFS.keys()}
     try:
         for id_e in ids_eleves:
@@ -498,7 +485,6 @@ def reinitialiser_notes_classe_db(ids_eleves):
         return False
 
 
-# --- FONCTIONS HISTORIQUE DE BULLETINS ---
 def deja_archive_db(annee_scolaire, trimestre, classe) -> bool:
     try:
         response = (
@@ -516,11 +502,6 @@ def deja_archive_db(annee_scolaire, trimestre, classe) -> bool:
 
 
 def archiver_bulletins_db(df_classe, annee_scolaire, trimestre, ecraser=False):
-    """
-    Archive les bulletins de la classe. Si 'ecraser' est True et qu'un archivage
-    existant est trouvé pour la même classe/année/trimestre, il est supprimé
-    avant réinsertion afin d'éviter les doublons (bug corrigé).
-    """
     try:
         classe_cible = df_classe.iloc[0]["classe"] if not df_classe.empty else ""
 
@@ -576,9 +557,6 @@ def charger_historique_db(annee=None, trimestre=None, classe=None):
 # 6. GÉNÉRATION PDF MULTI-BULLETINS (REPORTLAB)
 # ==========================================
 def dessiner_cadre_page(canvas_obj, doc):
-    """ Dessine un cadre décoratif et un pied de page fixe sur chaque page,
-    afin que la page imprimée soit toujours pleinement occupée visuellement,
-    même quand le contenu du bulletin ne remplit pas toute la hauteur. """
     canvas_obj.saveState()
     largeur, hauteur = A4
     marge_ext = 14
@@ -635,10 +613,9 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
 
         notes_actuelles = normaliser_notes(eleve_obj.get("notes"))
 
-        LOGO_PATH = "logo.png"
-        if os.path.exists(LOGO_PATH):
+        if os.path.exists(LOGO_FILENAME):
             try:
-                logo_img = Image(LOGO_PATH, width=50, height=50)
+                logo_img = Image(LOGO_FILENAME, width=60, height=60)
             except Exception:
                 logo_img = Paragraph(f"<font size=12 color='{COULEUR_MARINE}'><b>EPDC</b></font>", style_cell_center_bold)
         else:
@@ -858,11 +835,28 @@ if mode_mobile:
                 st.rerun()
 
 else:
-    st.sidebar.markdown(
-        '<div class="marque-ecole"><div class="nom">🎓 École Privée<br/>Diaratigui COULIBALY</div>'
-        '<div class="lieu">CAP Kalaban-Coro · Administration</div></div>',
-        unsafe_allow_html=True
-    )
+    if os.path.exists(LOGO_FILENAME):
+        col_logo, col_nom = st.sidebar.columns([1, 2.2])
+        with col_logo:
+            st.image(LOGO_FILENAME, use_container_width=True)
+        with col_nom:
+            st.markdown(
+                '<div style="padding-top:0.4rem; font-family:\'Lora\',serif; font-size:1.02rem; '
+                'font-weight:700; color:#F2EFE6; line-height:1.25;">École Privée<br/>Diaratigui COULIBALY</div>',
+                unsafe_allow_html=True
+            )
+        st.sidebar.markdown(
+            '<div style="font-size:0.8rem; color:#C89B3C; letter-spacing:0.02em; '
+            'padding:0.2rem 0 1rem 0; border-bottom:1px solid #2E4E7C; margin-bottom:1rem;">'
+            'CAP Kalaban-Coro · Administration</div>',
+            unsafe_allow_html=True
+        )
+    else:
+        st.sidebar.markdown(
+            '<div class="marque-ecole"><div class="nom">🎓 École Privée<br/>Diaratigui COULIBALY</div>'
+            '<div class="lieu">CAP Kalaban-Coro · Administration</div></div>',
+            unsafe_allow_html=True
+        )
     bouton_deconnexion()
 
     st.sidebar.markdown("---")
@@ -938,7 +932,6 @@ else:
                             st.success("Informations mises à jour.")
                             st.rerun()
 
-                # Suppression en deux étapes pour éviter les clics accidentels
                 cle_confirmation = "confirmer_suppression_id"
                 if st.button("❌ Supprimer définitivement cet élève"):
                     st.session_state[cle_confirmation] = eleve_cible["id"]
@@ -1084,7 +1077,6 @@ else:
                 use_container_width=True
             )
 
-        # --- Archivage séparé du téléchargement, avec détection des doublons ---
         deja_present = deja_archive_db(annee_scolaire_input, trimestre_input, classe_sel)
         with col_arch:
             if deja_present:
@@ -1172,7 +1164,8 @@ else:
                     Classe : {eleve_obj['classe']}
                 </div>
                 <div style="width: 24%; text-align: center;">
-                    <div style="font-size: 22px; color: {COULEUR_MARINE}; font-weight: bold;">EPDC</div>
+                    <img src="logo_epdc_cercle.png" style="max-width: 70px; height: auto;" alt="Logo EPDC" onerror="this.style.display='none'; document.getElementById('alt-logo').style.display='block';">
+                    <div id="alt-logo" style="display:none; font-size: 22px; color: {COULEUR_MARINE}; font-weight: bold;">EPDC</div>
                 </div>
                 <div style="width: 38%; text-align: right; line-height: 1.4;">
                     ANNÉE SCOLAIRE : {annee_scolaire_input}<br>
