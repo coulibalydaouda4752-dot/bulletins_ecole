@@ -573,7 +573,7 @@ def dessiner_cadre_page(canvas_obj, doc):
     # --- Citation dynamique en pied de page ---
     page_num = canvas_obj.getPageNumber()
     citation = CITATIONS_EDUCATIVES[(page_num - 1) % len(CITATIONS_EDUCATIVES)]
-    
+
     canvas_obj.setFont("Helvetica-Oblique", 7.5)
     canvas_obj.setFillColor(colors.HexColor("#334155"))
     canvas_obj.drawCentredString(largeur / 2, marge_ext + 18, f"💡 {citation}")
@@ -912,7 +912,7 @@ else:
             else:
                 classe_filtre = st.selectbox("Filtrer par classe :", ["Toutes"] + CLASSES)
                 df_aff = df_eleves if classe_filtre == "Toutes" else df_eleves[df_eleves["classe"] == classe_filtre]
-                
+
                 st.write(f"Total : **{len(df_aff)}** élève(s)")
                 st.dataframe(
                     df_aff[["nom", "prenom", "classe", "sexe"]],
@@ -1033,7 +1033,7 @@ else:
                 )
 
                 st.markdown("---")
-                col_b1, col_b2 = st.columns(2)
+                col_b1, col_b2, col_b3 = st.columns(3)
 
                 with col_b1:
                     pdf_bytes = generer_pdf_bulletins_classe(df_cb, annee_scolaire_globale, trimestre_global)
@@ -1057,6 +1057,28 @@ else:
                         else:
                             if archiver_bulletins_db(df_cb, annee_scolaire_globale, trimestre_global, ecraser=False):
                                 st.success("Bulletins archivés avec succès !")
+
+                with col_b3:
+                    if st.button("🔒 Clôturer et réinitialiser ce trimestre", use_container_width=True):
+                        st.session_state["confirmer_reset_trimestre"] = classe_bulletin
+
+                if st.session_state.get("confirmer_reset_trimestre") == classe_bulletin:
+                    st.warning(
+                        f"⚠️ Cette action va **effacer toutes les notes** des {len(df_cb)} élève(s) de **{classe_bulletin}** "
+                        f"pour repartir sur un trimestre vierge. Assure-toi d'avoir bien téléchargé et archivé les bulletins "
+                        f"du **{trimestre_global}** avant de continuer. Cette action est irréversible."
+                    )
+                    c_oui, c_non = st.columns(2)
+                    with c_oui:
+                        if st.button("✅ Oui, clôturer et réinitialiser", type="primary", use_container_width=True, key="btn_reset_oui"):
+                            if reinitialiser_notes_classe_db(df_cb["id"].tolist()):
+                                st.session_state.pop("confirmer_reset_trimestre", None)
+                                st.success(f"Les notes de {classe_bulletin} ont été réinitialisées. Tu peux démarrer la saisie du trimestre suivant.")
+                                st.rerun()
+                    with c_non:
+                        if st.button("Annuler", use_container_width=True, key="btn_reset_non"):
+                            st.session_state.pop("confirmer_reset_trimestre", None)
+                            st.rerun()
 
     # ------------------------------------------
     # ONGLET 4 : HISTORIQUE
@@ -1099,13 +1121,13 @@ else:
             st.warning("Aucune donnée disponible pour établir des statistiques.")
         else:
             st.subheader("1. Vue Globale de l'Établissement")
-            
+
             # Recalcul des moyennes pour tous les élèves
             df_stats = df_eleves.copy()
             df_stats["moyenne"] = df_stats["notes"].apply(lambda n: calculer_bilan_eleve(n)[1])
-            
+
             col_s1, col_s2, col_s3, col_s4 = st.columns(4)
-            
+
             with col_s1:
                 st.metric("Total Élèves", len(df_stats))
             with col_s2:
@@ -1120,32 +1142,32 @@ else:
 
             st.markdown("---")
             st.subheader("2. Répartition par Genre")
-            
+
             # Graphique de répartition des sexes
             genre_counts = df_stats["sexe"].value_counts().reset_index()
             genre_counts.columns = ["Sexe", "Nombre"]
             genre_counts["Sexe"] = genre_counts["Sexe"].map({"M": "Garçons", "F": "Filles"})
-            
+
             st.bar_chart(data=genre_counts.set_index("Sexe"), use_container_width=True)
 
             st.markdown("---")
             st.subheader("3. Performances Moyennes par Classe")
-            
+
             # Moyenne générale par classe
             moyennes_classe = df_stats.groupby("classe")["moyenne"].mean().reset_index()
             moyennes_classe.columns = ["Classe", "Moyenne Générale"]
-            
+
             st.dataframe(
                 moyennes_classe.style.format({"Moyenne Générale": "{:.2f}"}),
                 use_container_width=True,
                 hide_index=True
             )
-            
+
             st.bar_chart(data=moyennes_classe.set_index("Classe"), use_container_width=True)
 
             st.markdown("---")
             st.subheader("4. Taux de Réussite par Classe (Moyenne >= 10/20)")
-            
+
             taux_reussite = []
             for c in CLASSES:
                 df_c = df_stats[df_stats["classe"] == c]
