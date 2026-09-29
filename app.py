@@ -6,7 +6,6 @@ import textwrap
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
-import plotly.graph_objects as go
 from datetime import datetime
 from supabase import Client, create_client
 
@@ -202,6 +201,16 @@ except Exception:
 # ==========================================
 # 2. AUTHENTIFICATION ADMINISTRATION
 # ==========================================
+# Les identifiants autorisés sont définis dans st.secrets, sous la forme :
+#
+# [admin_users]
+# directeur = "b8f3c9...hash_sha256..."
+# secretaire = "a12de4...hash_sha256..."
+#
+# Pour générer le hash d'un mot de passe, exécuter en local :
+#   python3 -c "import hashlib; print(hashlib.sha256('MonMotDePasse'.encode()).hexdigest())"
+# et copier le résultat dans les secrets. Ne jamais stocker de mot de passe en clair.
+
 def hacher_mdp(mdp: str) -> str:
     return hashlib.sha256(mdp.encode("utf-8")).hexdigest()
 
@@ -266,6 +275,8 @@ def bouton_deconnexion():
         st.rerun()
 
 
+# La vérification d'authentification s'applique à TOUTE l'application,
+# y compris le mode mobile ?mode=saisie, avant tout accès aux données.
 exiger_authentification()
 
 # ==========================================
@@ -326,6 +337,7 @@ CITATIONS_EDUCATIVES = [
 # 4. FONCTIONS DE CALCUL ET FORMATAGE
 # ==========================================
 def fmt_num(val, decimals=2):
+    """ Formate un nombre en remplaçant le point décimal par une virgule. """
     if val is None or val == "":
         return ""
     try:
@@ -393,6 +405,7 @@ def couleur_appreciation(apprec):
 
 
 def normaliser_notes(valeur_brute):
+    """ Garantit que 'notes' est toujours un dict Python exploitable. """
     if isinstance(valeur_brute, dict):
         return valeur_brute
     if isinstance(valeur_brute, str) and valeur_brute.strip():
@@ -404,6 +417,7 @@ def normaliser_notes(valeur_brute):
 
 
 def normaliser_eleve(eleve: dict) -> dict:
+    """ Force les types numériques (évite les comparaisons str/Decimal fragiles). """
     e = dict(eleve)
     e["notes"] = normaliser_notes(e.get("notes"))
     try:
@@ -471,6 +485,7 @@ def supprimer_eleve_db(id_eleve):
 
 
 def reinitialiser_notes_classe_db(ids_eleves):
+    """ Vide les notes (après archivage) pour préparer le trimestre suivant. """
     notes_vides = {m: {"classe": None, "compo": None} for m in MATIERES_COEFS.keys()}
     try:
         for id_e in ids_eleves:
@@ -483,6 +498,7 @@ def reinitialiser_notes_classe_db(ids_eleves):
         return False
 
 
+# --- FONCTIONS HISTORIQUE DE BULLETINS ---
 def deja_archive_db(annee_scolaire, trimestre, classe) -> bool:
     try:
         response = (
@@ -500,6 +516,11 @@ def deja_archive_db(annee_scolaire, trimestre, classe) -> bool:
 
 
 def archiver_bulletins_db(df_classe, annee_scolaire, trimestre, ecraser=False):
+    """
+    Archive les bulletins de la classe. Si 'ecraser' est True et qu'un archivage
+    existant est trouvé pour la même classe/année/trimestre, il est supprimé
+    avant réinsertion afin d'éviter les doublons (bug corrigé).
+    """
     try:
         classe_cible = df_classe.iloc[0]["classe"] if not df_classe.empty else ""
 
@@ -555,6 +576,9 @@ def charger_historique_db(annee=None, trimestre=None, classe=None):
 # 6. GÉNÉRATION PDF MULTI-BULLETINS (REPORTLAB)
 # ==========================================
 def dessiner_cadre_page(canvas_obj, doc):
+    """ Dessine un cadre décoratif et un pied de page fixe sur chaque page,
+    afin que la page imprimée soit toujours pleinement occupée visuellement,
+    même quand le contenu du bulletin ne remplit pas toute la hauteur. """
     canvas_obj.saveState()
     largeur, hauteur = A4
     marge_ext = 14
@@ -931,6 +955,7 @@ else:
                             st.success("Informations mises à jour.")
                             st.rerun()
 
+                # Suppression en deux étapes pour éviter les clics accidentels
                 cle_confirmation = "confirmer_suppression_id"
                 if st.button("❌ Supprimer définitivement cet élève"):
                     st.session_state[cle_confirmation] = eleve_cible["id"]
@@ -1044,65 +1069,6 @@ else:
                 use_container_width=True
             )
 
-            # --- ANALYSE GRAPHIQUE AVEC PLOTLY ---
-            st.markdown("---")
-            st.subheader("📊 Tableau de Bord Interactif de la Classe")
-
-            g_col1, g_col2 = st.columns(2)
-
-            with g_col1:
-                # Graphique 1 : Top 5 / Distribution des moyennes des élèves
-                fig_moy = go.Figure()
-                fig_moy.add_trace(go.Bar(
-                    x=df_classe["nom"] + " " + df_classe["prenom"].str[0] + ".",
-                    y=df_classe["moyenne"],
-                    text=df_classe["moyenne"].apply(lambda x: fmt_num(x)),
-                    textposition='auto',
-                    marker_color=COULEUR_MARINE
-                ))
-                fig_moy.update_layout(
-                    title="Moyenne générale par élève",
-                    xaxis_title="Élèves",
-                    yaxis_title="Moyenne (/20)",
-                    yaxis=dict(range=[0, 20]),
-                    template="plotly_white",
-                    height=380
-                )
-                st.plotly_chart(fig_moy, use_container_width=True)
-
-            with g_col2:
-                # Graphique 2 : Moyenne générale par Matière
-                mat_stats = {m: [] for m in MATIERES_COEFS.keys()}
-                for _, row in df_classe.iterrows():
-                    notes_e = normaliser_notes(row.get("notes"))
-                    for m in MATIERES_COEFS.keys():
-                        m_data = notes_e.get(m, {})
-                        nc, np_val = m_data.get("classe"), m_data.get("compo")
-                        if nc is not None and np_val is not None:
-                            mat_stats[m].append(calculer_moyenne_matiere(nc, np_val))
-
-                avg_mat = {m: (sum(vals) / len(vals)) if vals else 0.0 for m, vals in mat_stats.items()}
-                df_mat = pd.DataFrame(list(avg_mat.items()), columns=["Matière", "Moyenne"]).sort_values("Moyenne", ascending=True)
-
-                fig_mat = go.Figure()
-                fig_mat.add_trace(go.Bar(
-                    x=df_mat["Moyenne"],
-                    y=df_mat["Matière"],
-                    orientation='h',
-                    text=df_mat["Moyenne"].apply(lambda x: fmt_num(x)),
-                    textposition='auto',
-                    marker_color=COULEUR_OR
-                ))
-                fig_mat.update_layout(
-                    title="Moyenne de la classe par Matière",
-                    xaxis_title="Moyenne (/20)",
-                    yaxis_title="Matières",
-                    xaxis=dict(range=[0, 20]),
-                    template="plotly_white",
-                    height=380
-                )
-                st.plotly_chart(fig_mat, use_container_width=True)
-
     # ------------------------------------------------------------
     # 4. IMPRESSION DES BULLETINS
     # ------------------------------------------------------------
@@ -1135,6 +1101,7 @@ else:
                 use_container_width=True
             )
 
+        # --- Archivage séparé du téléchargement, avec détection des doublons ---
         deja_present = deja_archive_db(annee_scolaire_input, trimestre_input, classe_sel)
         with col_arch:
             if deja_present:
