@@ -850,10 +850,26 @@ else:
 
     bouton_deconnexion()
 
-    st.sidebar.title("Navigation")
+    # ------------------------------------------
+    # CONFIGURATION DES BULLETINS (BARRE LATÉRALE)
+    # ------------------------------------------
+    st.sidebar.markdown("### ⚙️ Bulletins de configuration")
+    annee_scolaire_globale = st.sidebar.text_input("Année Scolaire", value="2025-2026", key="cfg_annee")
+    trimestre_global = st.sidebar.selectbox(
+        "Période / Trimestre",
+        ["1er TRIMESTRE", "2ème TRIMESTRE", "3ème TRIMESTRE"],
+        key="cfg_trimestre"
+    )
+    st.sidebar.markdown("---")
+
+    # ------------------------------------------
+    # NAVIGATION
+    # ------------------------------------------
+    st.sidebar.title("Navigation :")
     menu = st.sidebar.radio(
         "Menu principal",
-        ["Gestion des Élèves", "Saisie des Notes", "Génération Bulletins", "Historique", "Statistiques"]
+        ["Gestion des Élèves", "Saisie des Notes", "Génération Bulletins", "Historique", "Statistiques"],
+        label_visibility="collapsed"
     )
 
     eleves_data = charger_eleves_db()
@@ -938,6 +954,7 @@ else:
     # ------------------------------------------
     elif menu == "Saisie des Notes":
         st.title("📝 Saisie des Notes")
+        st.caption(f"Période active : **{trimestre_global}** | Année Scolaire : **{annee_scolaire_globale}**")
 
         if df_eleves.empty:
             st.warning("Veuillez d'abord ajouter des élèves dans la section 'Gestion des Élèves'.")
@@ -991,13 +1008,13 @@ else:
         if df_eleves.empty:
             st.warning("Aucun élève disponible.")
         else:
-            col_a1, col_a2, col_a3 = st.columns(3)
+            col_a1, col_a2 = st.columns(2)
             with col_a1:
-                annee_scolaire = st.text_input("Année scolaire", value="2025-2026")
+                st.info(f"📅 **Année scolaire sélectionnée :** {annee_scolaire_globale}")
             with col_a2:
-                trimestre = st.selectbox("Trimestre", ["1er Trimestre", "2ème Trimestre", "3ème Trimestre"])
-            with col_a3:
-                classe_bulletin = st.selectbox("Classe", CLASSES)
+                st.info(f"🏆 **Période sélectionnée :** {trimestre_global}")
+
+            classe_bulletin = st.selectbox("Sélectionner la Classe :", CLASSES)
 
             df_cb = df_eleves[df_eleves["classe"] == classe_bulletin].copy()
 
@@ -1019,11 +1036,11 @@ else:
                 col_b1, col_b2 = st.columns(2)
 
                 with col_b1:
-                    pdf_bytes = generer_pdf_bulletins_classe(df_cb, annee_scolaire, trimestre)
+                    pdf_bytes = generer_pdf_bulletins_classe(df_cb, annee_scolaire_globale, trimestre_global)
                     st.download_button(
                         label="📥 Télécharger le PDF de la classe",
                         data=pdf_bytes,
-                        file_name=f"Bulletins_{classe_bulletin}_{trimestre.replace(' ', '_')}.pdf",
+                        file_name=f"Bulletins_{classe_bulletin}_{trimestre_global.replace(' ', '_')}.pdf",
                         mime="application/pdf",
                         type="primary",
                         use_container_width=True
@@ -1031,14 +1048,14 @@ else:
 
                 with col_b2:
                     if st.button("📦 Archiver ces bulletins", use_container_width=True):
-                        deja = deja_archive_db(annee_scolaire, trimestre, classe_bulletin)
+                        deja = deja_archive_db(annee_scolaire_globale, trimestre_global, classe_bulletin)
                         if deja:
                             st.warning("Des bulletins pour cette période existent déjà dans l'historique.")
                             if st.button("Écraser et ré-archiver", key="btn_ecraser"):
-                                if archiver_bulletins_db(df_cb, annee_scolaire, trimestre, ecraser=True):
+                                if archiver_bulletins_db(df_cb, annee_scolaire_globale, trimestre_global, ecraser=True):
                                     st.success("Archivage mis à jour avec succès !")
                         else:
-                            if archiver_bulletins_db(df_cb, annee_scolaire, trimestre, ecraser=False):
+                            if archiver_bulletins_db(df_cb, annee_scolaire_globale, trimestre_global, ecraser=False):
                                 st.success("Bulletins archivés avec succès !")
 
     # ------------------------------------------
@@ -1049,9 +1066,9 @@ else:
 
         col_h1, col_h2, col_h3 = st.columns(3)
         with col_h1:
-            h_annee = st.text_input("Année scolaire (ex: 2025-2026)", value="")
+            h_annee = st.text_input("Année scolaire (ex: 2025-2026)", value=annee_scolaire_globale)
         with col_h2:
-            h_trim = st.selectbox("Trimestre", ["Tous", "1er Trimestre", "2ème Trimestre", "3ème Trimestre"])
+            h_trim = st.selectbox("Trimestre", ["Tous", "1er TRIMESTRE", "2ème TRIMESTRE", "3ème TRIMESTRE"])
         with col_h3:
             h_classe = st.selectbox("Classe", ["Toutes"] + CLASSES)
 
