@@ -841,432 +841,309 @@ else:
                 'font-weight:700; color:#F2EFE6; line-height:1.25;">École Privée<br/>Diaratigui COULIBALY</div>',
                 unsafe_allow_html=True
             )
-        st.sidebar.markdown(
-            '<div style="font-size:0.8rem; color:#C89B3C; letter-spacing:0.02em; '
-            'padding:0.2rem 0 1rem 0; border-bottom:1px solid #2E4E7C; margin-bottom:1rem;">'
-            'CAP Kalaban-Coro · Administration</div>',
-            unsafe_allow_html=True
-        )
     else:
         st.sidebar.markdown(
-            '<div class="marque-ecole"><div class="nom">🎓 École Privée<br/>Diaratigui COULIBALY</div>'
-            '<div class="lieu">CAP Kalaban-Coro · Administration</div></div>',
+            '<div class="marque-ecole"><div class="nom">École Privée<br/>Diaratigui COULIBALY</div>'
+            '<div class="lieu">CAP Kalaban-Coro</div></div>',
             unsafe_allow_html=True
         )
+
     bouton_deconnexion()
 
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("⚙️ Configuration Bulletins")
-    annee_scolaire_input = st.sidebar.text_input("Année Scolaire", value="2025-2026")
-    trimestre_input = st.sidebar.selectbox(
-        "Période / Trimestre",
-        ["1er TRIMESTRE", "2ème TRIMESTRE", "3ème TRIMESTRE"]
-    )
-    st.sidebar.markdown("---")
-
+    st.sidebar.title("Navigation")
     menu = st.sidebar.radio(
-        "Navigation :",
-        [
-            "1. Gestion des Élèves",
-            "2. Saisie des Notes (PC)",
-            "3. Classement & Résultats",
-            "4. Impression des Bulletins",
-            "5. Historique des Bulletins 📜"
-        ]
+        "Menu principal",
+        ["Gestion des Élèves", "Saisie des Notes", "Génération Bulletins", "Historique", "Statistiques"]
     )
 
     eleves_data = charger_eleves_db()
+    df_eleves = pd.DataFrame(eleves_data) if eleves_data else pd.DataFrame()
 
-    # ------------------------------------------------------------
-    # 1. GESTION DES ÉLÈVES
-    # ------------------------------------------------------------
-    if menu == "1. Gestion des Élèves":
-        st.header("👤 Inscription et Gestion des Élèves")
+    # ------------------------------------------
+    # ONGLET 1 : GESTION DES ÉLÈVES
+    # ------------------------------------------
+    if menu == "Gestion des Élèves":
+        st.title("👨‍🎓 Gestion des Élèves")
 
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            st.markdown('<div class="carte">', unsafe_allow_html=True)
-            with st.form("form_inscript"):
-                st.subheader("Nouvel Élève")
-                nom = st.text_input("Nom de famille :")
-                prenom = st.text_input("Prénom :")
-                sexe = st.selectbox("Sexe :", ["M", "F"], format_func=lambda x: "Masculin (M)" if x == "M" else "Féminin (F)")
-                classe = st.selectbox("Classe :", CLASSES)
-                btn_ajouter = st.form_submit_button("Ajouter à la base", type="primary", use_container_width=True)
+        tab_ajout, tab_liste, tab_modif = st.tabs(["Ajouter un élève", "Liste des élèves", "Modifier / Supprimer"])
+
+        with tab_ajout:
+            st.subheader("Inscrire un nouvel élève")
+            with st.form("form_ajout_eleve"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    nom = st.text_input("Nom de l'élève").strip().upper()
+                    prenom = st.text_input("Prénom de l'élève").strip().title()
+                with col2:
+                    classe = st.selectbox("Classe", CLASSES)
+                    sexe = st.selectbox("Sexe", ["M", "F"])
+
+                btn_ajouter = st.form_submit_button("Enregistrer l'élève", type="primary")
 
                 if btn_ajouter:
-                    if not nom.strip() or not prenom.strip():
+                    if not nom or not prenom:
                         st.error("Le nom et le prénom sont obligatoires.")
                     else:
                         notes_vides = {m: {"classe": None, "compo": None} for m in MATIERES_COEFS.keys()}
-                        if sauvegarder_eleve_db(None, nom.strip().upper(), prenom.strip().title(), classe, sexe, notes_vides):
-                            st.success("Élève inscrit avec succès !")
+                        if sauvegarder_eleve_db(None, nom, prenom, classe, sexe, notes_vides):
+                            st.success(f"Élève {prenom} {nom} ajouté avec succès !")
                             st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
 
-        with col2:
-            st.subheader("Effectif enregistré")
-            if eleves_data:
-                df = pd.DataFrame(eleves_data)
+        with tab_liste:
+            st.subheader("Effectif global")
+            if df_eleves.empty:
+                st.info("Aucun élève enregistré.")
+            else:
+                classe_filtre = st.selectbox("Filtrer par classe :", ["Toutes"] + CLASSES)
+                df_aff = df_eleves if classe_filtre == "Toutes" else df_eleves[df_eleves["classe"] == classe_filtre]
                 
-                classe_filtre_gestion = st.selectbox("Filtrer l'effectif par classe :", ["Toutes"] + CLASSES, key="f_eleves_gestion")
-                if classe_filtre_gestion != "Toutes":
-                    df_affiche = df[df["classe"] == classe_filtre_gestion]
-                else:
-                    df_affiche = df
+                st.write(f"Total : **{len(df_aff)}** élève(s)")
+                st.dataframe(
+                    df_aff[["nom", "prenom", "classe", "sexe"]],
+                    use_container_width=True,
+                    hide_index=True
+                )
 
-                st.dataframe(df_affiche[["id", "nom", "prenom", "sexe", "classe", "moyenne", "total_points"]], use_container_width=True)
+        with tab_modif:
+            st.subheader("Modifier ou supprimer un élève")
+            if df_eleves.empty:
+                st.info("Aucun élève à modifier.")
+            else:
+                eleve_dict = {f"{r['nom']} {r['prenom']} ({r['classe']})": r for _, r in df_eleves.iterrows()}
+                choix = st.selectbox("Sélectionner l'élève :", list(eleve_dict.keys()))
+                e_sel = eleve_dict[choix]
+
+                col_m1, col_m2 = st.columns(2)
+                with col_m1:
+                    n_nom = st.text_input("Nom", value=e_sel["nom"]).strip().upper()
+                    n_prenom = st.text_input("Prénom", value=e_sel["prenom"]).strip().title()
+                with col_m2:
+                    n_classe = st.selectbox("Classe", CLASSES, index=CLASSES.index(e_sel["classe"]) if e_sel["classe"] in CLASSES else 0)
+                    n_sexe = st.selectbox("Sexe", ["M", "F"], index=0 if e_sel.get("sexe") == "M" else 1)
+
+                col_b1, col_b2 = st.columns(2)
+                with col_b1:
+                    if st.button("Mettre à jour ✏️", use_container_width=True):
+                        if modifier_infos_eleve_db(e_sel["id"], n_nom, n_prenom, n_classe, n_sexe):
+                            st.success("Informations mises à jour !")
+                            st.rerun()
+                with col_b2:
+                    if st.button("Supprimer l'élève ❌", use_container_width=True):
+                        if supprimer_eleve_db(e_sel["id"]):
+                            st.success("Élève supprimé !")
+                            st.rerun()
+
+    # ------------------------------------------
+    # ONGLET 2 : SAISIE DES NOTES
+    # ------------------------------------------
+    elif menu == "Saisie des Notes":
+        st.title("📝 Saisie des Notes")
+
+        if df_eleves.empty:
+            st.warning("Veuillez d'abord ajouter des élèves dans la section 'Gestion des Élèves'.")
+        else:
+            classe_saisie = st.selectbox("Choisir la classe :", CLASSES)
+            df_c = df_eleves[df_eleves["classe"] == classe_saisie]
+
+            if df_c.empty:
+                st.info(f"Aucun élève en {classe_saisie}.")
+            else:
+                eleves_options = {f"{r['nom']} {r['prenom']}": r for _, r in df_c.iterrows()}
+                eleve_nom = st.selectbox("Choisir l'élève :", list(eleves_options.keys()))
+                eleve_courant = eleves_options[eleve_nom]
+
+                st.markdown(f"### Élève : **{eleve_courant['nom']} {eleve_courant['prenom']}**")
+
+                notes_act = normaliser_notes(eleve_courant.get("notes"))
+
+                with st.form("form_saisie_notes_desktop"):
+                    nouvelles_notes = {}
+                    st.markdown("---")
+
+                    for mat, coef in MATIERES_COEFS.items():
+                        m_data = notes_act.get(mat, {})
+                        v_cl = float(m_data.get("classe")) if m_data.get("classe") is not None else None
+                        v_co = float(m_data.get("compo")) if m_data.get("compo") is not None else None
+
+                        col_mat, col_cl, col_co = st.columns([2, 1, 1])
+                        with col_mat:
+                            st.markdown(f"**{mat}** *(Coef {coef})*")
+                        with col_cl:
+                            nc = st.number_input(f"Classe /20 ({mat})", min_value=0.0, max_value=20.0, value=v_cl, step=0.5, label_visibility="collapsed")
+                        with col_co:
+                            npt = st.number_input(f"Compo /40 ({mat})", min_value=0.0, max_value=40.0, value=v_co, step=0.5, label_visibility="collapsed")
+
+                        nouvelles_notes[mat] = {"classe": nc, "compo": npt}
+
+                    btn_sauvegarder = st.form_submit_button("Enregistrer les notes 💾", type="primary")
+
+                    if btn_sauvegarder:
+                        if sauvegarder_eleve_db(eleve_courant["id"], eleve_courant["nom"], eleve_courant["prenom"], eleve_courant["classe"], eleve_courant.get("sexe", "M"), nouvelles_notes):
+                            st.success("Notes enregistrées avec succès !")
+                            st.rerun()
+
+    # ------------------------------------------
+    # ONGLET 3 : GÉNÉRATION BULLETINS
+    # ------------------------------------------
+    elif menu == "Génération Bulletins":
+        st.title("📄 Génération des Bulletins")
+
+        if df_eleves.empty:
+            st.warning("Aucun élève disponible.")
+        else:
+            col_a1, col_a2, col_a3 = st.columns(3)
+            with col_a1:
+                annee_scolaire = st.text_input("Année scolaire", value="2025-2026")
+            with col_a2:
+                trimestre = st.selectbox("Trimestre", ["1er Trimestre", "2ème Trimestre", "3ème Trimestre"])
+            with col_a3:
+                classe_bulletin = st.selectbox("Classe", CLASSES)
+
+            df_cb = df_eleves[df_eleves["classe"] == classe_bulletin].copy()
+
+            if df_cb.empty:
+                st.info(f"Aucun élève enregistré pour la classe {classe_bulletin}.")
+            else:
+                # Recalcul et tri par moyenne décroissante
+                df_cb["moyenne"] = df_cb["notes"].apply(lambda n: calculer_bilan_eleve(n)[1])
+                df_cb["total_points"] = df_cb["notes"].apply(lambda n: calculer_bilan_eleve(n)[0])
+                df_cb = df_cb.sort_values(by="moyenne", ascending=False).reset_index(drop=True)
+
+                st.subheader(f"Classement provisoire — {classe_bulletin}")
+                st.dataframe(
+                    df_cb[["nom", "prenom", "sexe", "total_points", "moyenne"]],
+                    use_container_width=True
+                )
 
                 st.markdown("---")
-                st.subheader("✏️ Modifier / 🗑️ Supprimer un élève")
+                col_b1, col_b2 = st.columns(2)
 
-                eleve_map = {f"{row['nom']} {row['prenom']} ({row['classe']})": row for _, row in df_affiche.iterrows()}
-                if eleve_map:
-                    eleve_label = st.selectbox("Sélectionner un élève :", list(eleve_map.keys()), key="sel_modif")
-                    eleve_cible = eleve_map[eleve_label]
+                with col_b1:
+                    pdf_bytes = generer_pdf_bulletins_classe(df_cb, annee_scolaire, trimestre)
+                    st.download_button(
+                        label="📥 Télécharger le PDF de la classe",
+                        data=pdf_bytes,
+                        file_name=f"Bulletins_{classe_bulletin}_{trimestre.replace(' ', '_')}.pdf",
+                        mime="application/pdf",
+                        type="primary",
+                        use_container_width=True
+                    )
 
-                    with st.expander("✏️ Modifier les informations de cet élève"):
-                        with st.form("form_modif_eleve"):
-                            nv_nom = st.text_input("Nom", value=eleve_cible["nom"])
-                            nv_prenom = st.text_input("Prénom", value=eleve_cible["prenom"])
-                            idx_sexe = 0 if eleve_cible.get("sexe", "M") == "M" else 1
-                            nv_sexe = st.selectbox("Sexe", ["M", "F"], index=idx_sexe, format_func=lambda x: "Masculin (M)" if x == "M" else "Féminin (F)")
-                            nv_classe = st.selectbox("Classe", CLASSES, index=CLASSES.index(eleve_cible["classe"]) if eleve_cible["classe"] in CLASSES else 0)
-                            btn_modif = st.form_submit_button("Enregistrer les modifications", type="primary")
+                with col_b2:
+                    if st.button("📦 Archiver ces bulletins", use_container_width=True):
+                        deja = deja_archive_db(annee_scolaire, trimestre, classe_bulletin)
+                        if deja:
+                            st.warning("Des bulletins pour cette période existent déjà dans l'historique.")
+                            if st.button("Écraser et ré-archiver", key="btn_ecraser"):
+                                if archiver_bulletins_db(df_cb, annee_scolaire, trimestre, ecraser=True):
+                                    st.success("Archivage mis à jour avec succès !")
+                        else:
+                            if archiver_bulletins_db(df_cb, annee_scolaire, trimestre, ecraser=False):
+                                st.success("Bulletins archivés avec succès !")
 
-                        if btn_modif:
-                            if modifier_infos_eleve_db(eleve_cible["id"], nv_nom.strip().upper(), nv_prenom.strip().title(), nv_classe, nv_sexe):
-                                st.success("Informations mises à jour.")
-                                st.rerun()
+    # ------------------------------------------
+    # ONGLET 4 : HISTORIQUE
+    # ------------------------------------------
+    elif menu == "Historique":
+        st.title("📚 Historique des Bulletins")
 
-                    cle_confirmation = "confirmer_suppression_id"
-                    if st.button("❌ Supprimer définitivement cet élève"):
-                        st.session_state[cle_confirmation] = eleve_cible["id"]
+        col_h1, col_h2, col_h3 = st.columns(3)
+        with col_h1:
+            h_annee = st.text_input("Année scolaire (ex: 2025-2026)", value="")
+        with col_h2:
+            h_trim = st.selectbox("Trimestre", ["Tous", "1er Trimestre", "2ème Trimestre", "3ème Trimestre"])
+        with col_h3:
+            h_classe = st.selectbox("Classe", ["Toutes"] + CLASSES)
 
-                    if st.session_state.get(cle_confirmation) == eleve_cible["id"]:
-                        st.warning(f"Confirmer la suppression définitive de **{eleve_cible['nom']} {eleve_cible['prenom']}** ? Cette action est irréversible.")
-                        c_oui, c_non = st.columns(2)
-                        with c_oui:
-                            if st.button("✅ Oui, supprimer", type="primary", use_container_width=True):
-                                if supprimer_eleve_db(eleve_cible["id"]):
-                                    st.session_state.pop(cle_confirmation, None)
-                                    st.success("L'élève a été supprimé de la base de données.")
-                                    st.rerun()
-                        with c_non:
-                            if st.button("Annuler", use_container_width=True):
-                                st.session_state.pop(cle_confirmation, None)
-                                st.rerun()
-                else:
-                    st.info("Aucun élève trouvé pour cette classe.")
-            else:
-                st.info("Aucun élève enregistré.")
+        f_trim = None if h_trim == "Tous" else h_trim
+        f_classe = None if h_classe == "Toutes" else h_classe
+        f_annee = h_annee.strip() if h_annee.strip() else None
 
-    # ------------------------------------------------------------
-    # 2. SAISIE DES NOTES (PC)
-    # ------------------------------------------------------------
-    elif menu == "2. Saisie des Notes (PC)":
-        st.header("📝 Saisie Globale des Notes")
-        if not eleves_data:
-            st.warning("Veuillez d'abord inscrire des élèves.")
-            st.stop()
+        historique = charger_historique_db(annee=f_annee, trimestre=f_trim, classe=f_classe)
 
-        df_eleves = pd.DataFrame(eleves_data)
-        
-        classe_sel = st.selectbox("Filtrer par classe :", CLASSES, key="saisie_classe_pc")
-        df_filtrer = df_eleves[df_eleves["classe"] == classe_sel]
-
-        if df_filtrer.empty:
-            st.warning(f"Aucun élève inscrit dans la classe {classe_sel}.")
-            st.stop()
-
-        eleve_options = {f"{row['nom']} {row['prenom']}": row for _, row in df_filtrer.iterrows()}
-        nom_eleve_sel = st.selectbox("Choisir l'élève :", list(eleve_options.keys()), key="saisie_eleve_pc")
-        eleve_obj = eleve_options[nom_eleve_sel]
-
-        notes_actuelles = normaliser_notes(eleve_obj.get("notes"))
-
-        st.subheader(f"Édition du bulletin : {eleve_obj['nom']} {eleve_obj['prenom']} ({classe_sel})")
-
-        with st.form("form_saisie_pc"):
-            nouv_notes = {}
-            cols_h = st.columns([3, 2, 2, 2])
-            cols_h[0].write("**Matière (Coef)**")
-            cols_h[1].write("**Classe (/20)**")
-            cols_h[2].write("**Compo (/40)**")
-            cols_h[3].write("**Moyenne (/20)**")
-
-            for mat, coef in MATIERES_COEFS.items():
-                m_data = notes_actuelles.get(mat, {})
-                val_cl = float(m_data.get("classe")) if m_data.get("classe") is not None else None
-                val_co = float(m_data.get("compo")) if m_data.get("compo") is not None else None
-
-                c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
-                c1.write(f"{mat} (**{coef}**)")
-                nc = c2.number_input(f"cl_{mat}", min_value=0.0, max_value=20.0, value=val_cl, step=0.5, label_visibility="collapsed")
-                npt = c3.number_input(f"cp_{mat}", min_value=0.0, max_value=40.0, value=val_co, step=0.5, label_visibility="collapsed")
-
-                if nc is not None and npt is not None:
-                    moy_m = calculer_moyenne_matiere(nc, npt)
-                    c4.write(f"**{fmt_num(moy_m)}**")
-                else:
-                    c4.write("--")
-
-                nouv_notes[mat] = {"classe": nc, "compo": npt}
-
-            btn_save = st.form_submit_button("Enregistrer toutes les notes 💾", type="primary")
-
-        if btn_save:
-            champs_incomplets = [m for m, v in nouv_notes.items() if v["classe"] is None or v["compo"] is None]
-            if champs_incomplets:
-                st.error(f"❌ Veuillez remplir toutes les notes avant d'enregistrer. Matières incomplètes : {', '.join(champs_incomplets)}")
-            else:
-                if sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], eleve_obj.get("sexe", "M"), nouv_notes):
-                    st.success("Toutes les notes ont été mises à jour !")
-                    st.rerun()
-
-    # ------------------------------------------------------------
-    # 3. CLASSEMENT & RÉSULTATS
-    # ------------------------------------------------------------
-    elif menu == "3. Classement & Résultats":
-        st.header("🏆 Classement Général par Classe")
-        if not eleves_data:
-            st.warning("Aucune donnée disponible.")
-            st.stop()
-
-        df_eleves = pd.DataFrame(eleves_data)
-        classe_sel = st.selectbox("Sélectionner la classe :", CLASSES)
-        df_classe = df_eleves[df_eleves["classe"] == classe_sel].copy()
-
-        if df_classe.empty:
-            st.info("Aucun élève dans cette classe.")
+        if not historique:
+            st.info("Aucun enregistrement d'historique trouvé pour ces critères.")
         else:
-            df_classe = df_classe.sort_values(by="moyenne", ascending=False).reset_index(drop=True)
-            df_classe["Rang"] = df_classe.index + 1
-            df_classe["Appréciation"] = df_classe["moyenne"].apply(attribuer_appreciation)
-
-            moy_classe = df_classe["moyenne"].mean()
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Effectif", len(df_classe))
-            c2.metric("Moyenne de classe", fmt_num(moy_classe))
-            c3.metric("Meilleure moyenne", fmt_num(df_classe["moyenne"].max()))
-
+            df_hist = pd.DataFrame(historique)
+            st.write(f"Total des registres trouvés : **{len(df_hist)}**")
             st.dataframe(
-                df_classe[["Rang", "nom", "prenom", "sexe", "total_points", "moyenne", "Appréciation"]],
-                use_container_width=True
+                df_hist[["annee_scolaire", "trimestre", "classe", "nom", "prenom", "rang", "moyenne", "total_points"]],
+                use_container_width=True,
+                hide_index=True
             )
 
-    # ------------------------------------------------------------
-    # 4. IMPRESSION DES BULLETINS
-    # ------------------------------------------------------------
-    elif menu == "4. Impression des Bulletins":
-        st.header("🖨️ Impression des Bulletins")
-        if not eleves_data:
-            st.warning("Aucun élève enregistré.")
-            st.stop()
+    # ------------------------------------------
+    # ONGLET 5 : STATISTIQUES
+    # ------------------------------------------
+    elif menu == "Statistiques":
+        st.title("📊 Statistiques et Indicateurs Clés")
 
-        df_eleves = pd.DataFrame(eleves_data)
-        classe_sel = st.selectbox("Classe :", CLASSES, key="imp_cl")
-
-        df_classe = df_eleves[df_eleves["classe"] == classe_sel].sort_values(by="moyenne", ascending=False).reset_index(drop=True)
-
-        if df_classe.empty:
-            st.info("Aucun élève dans cette classe.")
-            st.stop()
-
-        st.markdown("---")
-
-        pdf_data = generer_pdf_bulletins_classe(df_classe, annee_scolaire_input, trimestre_input)
-
-        col_dl, col_arch = st.columns(2)
-        with col_dl:
-            st.download_button(
-                label=f"📄 Télécharger TOUS les bulletins ({classe_sel}) — {trimestre_input}",
-                data=pdf_data,
-                file_name=f"Bulletins_{classe_sel.replace(' ', '_')}_{trimestre_input.replace(' ', '_')}.pdf",
-                mime="application/pdf",
-                use_container_width=True
-            )
-
-        deja_present = deja_archive_db(annee_scolaire_input, trimestre_input, classe_sel)
-        with col_arch:
-            if deja_present:
-                st.warning(f"⚠️ Un archivage existe déjà pour {classe_sel} — {trimestre_input} ({annee_scolaire_input}).")
-                if st.button("🔁 Écraser l'archivage existant", use_container_width=True):
-                    if archiver_bulletins_db(df_classe, annee_scolaire_input, trimestre_input, ecraser=True):
-                        st.success("✅ Archivage mis à jour (l'ancien a été remplacé).")
-            else:
-                if st.button("🗄️ Archiver dans l'historique", type="primary", use_container_width=True):
-                    if archiver_bulletins_db(df_classe, annee_scolaire_input, trimestre_input, ecraser=False):
-                        st.success("✅ Bulletins archivés avec succès !")
-
-        with st.expander("🔄 Clôturer ce trimestre pour cette classe (réinitialise les notes)"):
-            st.caption("À utiliser une fois les bulletins archivés, pour repartir sur des notes vierges au trimestre suivant. Cette action ne supprime pas l'historique déjà archivé.")
-            if st.button("Réinitialiser les notes de cette classe", key="reset_trim"):
-                st.session_state["confirmer_reset"] = classe_sel
-
-            if st.session_state.get("confirmer_reset") == classe_sel:
-                st.error(f"Confirmer la réinitialisation des notes de **{classe_sel}** ? Cette action est irréversible.")
-                c_oui, c_non = st.columns(2)
-                with c_oui:
-                    if st.button("✅ Oui, réinitialiser", type="primary", key="reset_oui"):
-                        if reinitialiser_notes_classe_db(df_classe["id"].tolist()):
-                            st.session_state.pop("confirmer_reset", None)
-                            st.success("Notes réinitialisées pour la classe.")
-                            st.rerun()
-                with c_non:
-                    if st.button("Annuler", key="reset_non"):
-                        st.session_state.pop("confirmer_reset", None)
-                        st.rerun()
-
-        st.markdown("---")
-        st.subheader("Aperçu individuel à l'écran")
-
-        eleve_options = {f"{row['nom']} {row['prenom']}": (i, row) for i, row in df_classe.iterrows()}
-        nom_sel = st.selectbox("Choisir un élève pour visualiser :", list(eleve_options.keys()))
-        idx_eleve, eleve_obj = eleve_options[nom_sel]
-        rang_eleve = idx_eleve + 1
-
-        notes_actuelles = normaliser_notes(eleve_obj.get("notes"))
-
-        rows_html = ""
-        for mat, coef in MATIERES_COEFS.items():
-            m_data = notes_actuelles.get(mat, {})
-            nc = m_data.get("classe")
-            npt = m_data.get("compo")
-
-            txt_nc = fmt_num(nc) if nc is not None else ""
-            txt_np = fmt_num(npt) if npt is not None else ""
-
-            if nc is not None and npt is not None:
-                moy_m = calculer_moyenne_matiere(nc, npt)
-                pts = round(moy_m * coef, 2)
-                txt_moy = fmt_num(moy_m)
-                txt_pts = fmt_num(pts)
-                apprec_mat = attribuer_appreciation(moy_m)
-            else:
-                txt_moy = ""
-                txt_pts = ""
-                apprec_mat = ""
-
-            rows_html += f"""
-            <tr style="border-bottom: 1px solid #ccc;">
-                <td style="padding: 6px 8px; font-weight: bold;">{mat}</td>
-                <td style="text-align: center; padding: 6px; border-left: 1px solid #ccc;">{txt_nc}</td>
-                <td style="text-align: center; padding: 6px; border-left: 1px solid #ccc;">{txt_np}</td>
-                <td style="text-align: center; padding: 6px; border-left: 1px solid #ccc;">{txt_moy}</td>
-                <td style="text-align: center; padding: 6px; border-left: 1px solid #ccc;">{coef}</td>
-                <td style="text-align: center; padding: 6px; border-left: 1px solid #ccc; font-weight: bold;">{txt_pts}</td>
-                <td style="padding: 6px 8px; border-left: 1px solid #ccc;">{apprec_mat}</td>
-            </tr>"""
-
-        apprec_generale = attribuer_appreciation(eleve_obj['moyenne'])
-        sexe_eleve = eleve_obj.get('sexe', 'M')
-        suffix_rang = obtenir_suffixe_rang(rang_eleve, sexe_eleve)
-        citation_apercu = CITATIONS_EDUCATIVES[idx_eleve % len(CITATIONS_EDUCATIVES)]
-        moy_gen_val = float(eleve_obj['moyenne'])
-        mention = "FELICITATIONS !" if moy_gen_val >= 14 else "ENCOURAGEMENTS !" if moy_gen_val >= 12 else "PEUT MIEUX FAIRE"
-        
-        th_html = f'<div style="font-size: 14px; font-weight: bold; color: {COULEUR_VERT}; margin-top: 6px;">🎖️ Tableau d\'honneur</div>' if moy_gen_val >= 15.0 else ''
-
-        bulletin_html = textwrap.dedent(f"""
-        <div style="background-color: #ffffff; color: #000000; padding: 25px; border: 1px solid #ccc; border-radius: 6px; font-family: 'Times New Roman', Times, serif; max-width: 800px; margin: auto; position: relative;">
-            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: bold; margin-bottom: 15px;">
-                <div style="width: 38%; text-align: left; line-height: 1.4;">
-                    CAP : Kalaban-Coro<br>
-                    Ecole Privée : Diaratigui COULIBALY<br>
-                    Classe : {eleve_obj['classe']}
-                </div>
-                <div style="width: 24%; text-align: center;">
-                    <div style="font-size: 22px; color: {COULEUR_MARINE}; font-weight: bold;">EPDC</div>
-                </div>
-                <div style="width: 38%; text-align: right; line-height: 1.4;">
-                    ANNÉE SCOLAIRE : {annee_scolaire_input}<br>
-                    <span style="color: {COULEUR_MARINE};">{trimestre_input}</span>
-                </div>
-            </div>
-
-            <div style="text-align: center; font-size: 18px; font-weight: bold; text-decoration: underline; margin: 20px 0; color: {COULEUR_MARINE};">
-                BULLETIN DE NOTES - {trimestre_input}
-            </div>
-
-            <div style="font-size: 15px; margin-bottom: 6px;">
-                <span style="font-weight: bold; display: inline-block; width: 160px;">Prénom de L'élève</span> : {eleve_obj['prenom']}
-            </div>
-            <div style="font-size: 15px; margin-bottom: 20px;">
-                <span style="font-weight: bold; display: inline-block; width: 160px;">Nom de l'élève</span> : {eleve_obj['nom']}
-            </div>
-
-            <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; font-size: 13px;">
-                <thead>
-                    <tr style="border-bottom: 1px solid #000; background-color: #f2f2f2;">
-                        <th style="border-right: 1px solid #000; padding: 6px; text-align: left; width: 28%;">Matière</th>
-                        <th style="border-right: 1px solid #000; padding: 6px; text-align: center;">Note<br>classe/20</th>
-                        <th style="border-right: 1px solid #000; padding: 6px; text-align: center;">Note<br>compo/40</th>
-                        <th style="border-right: 1px solid #000; padding: 6px; text-align: center;">Moyenne<br>/Matière</th>
-                        <th style="border-right: 1px solid #000; padding: 6px; text-align: center;">Coeff</th>
-                        <th style="border-right: 1px solid #000; padding: 6px; text-align: center;">Moyenne<br>coeff/Matière</th>
-                        <th style="padding: 6px; text-align: left;">Appréciation</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows_html}
-                    <tr style="border-top: 2px solid #000; font-weight: bold; background-color: #fdfdfd;">
-                        <td style="padding: 6px 8px;">Total</td>
-                        <td style="border-left: 1px solid #ccc;"></td>
-                        <td style="border-left: 1px solid #ccc;"></td>
-                        <td style="border-left: 1px solid #ccc;"></td>
-                        <td style="text-align: center; padding: 6px; border-left: 1px solid #ccc;">{TOTAL_COEFFICIENTS}</td>
-                        <td style="text-align: center; padding: 6px; border-left: 1px solid #ccc;">{fmt_num(eleve_obj['total_points'])}</td>
-                        <td style="border-left: 1px solid #ccc;"></td>
-                    </tr>
-                </tbody>
-            </table>
-
-            <div style="margin-top: 20px; font-size: 14px; line-height: 1.6;">
-                <div><b>Moyenne :</b> &nbsp;&nbsp;&nbsp;&nbsp; {fmt_num(eleve_obj['moyenne'])} / 20</div>
-                <div><b>Rang :</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {rang_eleve} {suffix_rang} / {len(df_classe)} élèves classés</div>
-                <div style="margin-top: 8px; font-weight: bold;">{mention}</div>
-                <div style="margin-top: 4px;"><b>Appréciation :</b> {apprec_generale} !</div>
-                {th_html}
-            </div>
-
-            <div style="text-align: right; margin-top: 20px; margin-bottom: 40px; font-weight: bold; font-size: 13px;">
-                Signature du directeur
-            </div>
-
-            <div style="margin-top: 30px; border-top: 1px solid #cbd5e1; padding-top: 8px; text-align: center; font-style: italic; font-size: 12px; color: #4b5563;">
-                💡 {citation_apercu}
-            </div>
-        </div>
-        """)
-
-        components.html(bulletin_html, height=850, scrolling=True)
-
-    # ------------------------------------------------------------
-    # 5. HISTORIQUE DES BULLETINS
-    # ------------------------------------------------------------
-    elif menu == "5. Historique des Bulletins 📜":
-        st.header("📜 Historique des Bulletins Archivés")
-
-        col_f1, col_f2, col_f3 = st.columns(3)
-        with col_f1:
-            annee_h = st.text_input("Filtrer par année", value="")
-        with col_f2:
-            trimestre_h = st.selectbox("Filtrer par trimestre", ["Tous", "1er TRIMESTRE", "2ème TRIMESTRE", "3ème TRIMESTRE"])
-        with col_f3:
-            classe_h = st.selectbox("Filtrer par classe", ["Toutes"] + CLASSES)
-
-        f_annee = annee_h if annee_h else None
-        f_trimestre = trimestre_h if trimestre_h != "Tous" else None
-        f_classe = classe_h if classe_h != "Toutes" else None
-
-        historique_data = charger_historique_db(annee=f_annee, trimestre=f_trimestre, classe=f_classe)
-
-        if historique_data:
-            df_hist = pd.DataFrame(historique_data)
-            st.dataframe(
-                df_hist[["annee_scolaire", "trimestre", "classe", "nom", "prenom", "sexe", "rang", "total_points", "moyenne", "created_at"]],
-                use_container_width=True
-            )
+        if df_eleves.empty:
+            st.warning("Aucune donnée disponible pour établir des statistiques.")
         else:
-            st.info("Aucun historique trouvé pour ces critères.")
+            st.subheader("1. Vue Globale de l'Établissement")
+            
+            # Recalcul des moyennes pour tous les élèves
+            df_stats = df_eleves.copy()
+            df_stats["moyenne"] = df_stats["notes"].apply(lambda n: calculer_bilan_eleve(n)[1])
+            
+            col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+            
+            with col_s1:
+                st.metric("Total Élèves", len(df_stats))
+            with col_s2:
+                nb_m = len(df_stats[df_stats["sexe"] == "M"])
+                st.metric("Garçons (M)", nb_m)
+            with col_s3:
+                nb_f = len(df_stats[df_stats["sexe"] == "F"])
+                st.metric("Filles (F)", nb_f)
+            with col_s4:
+                moy_globale = df_stats["moyenne"].mean() if not df_stats.empty else 0.0
+                st.metric("Moyenne Générale", f"{moy_globale:.2f} / 20")
+
+            st.markdown("---")
+            st.subheader("2. Répartition par Genre")
+            
+            # Graphique de répartition des sexes
+            genre_counts = df_stats["sexe"].value_counts().reset_index()
+            genre_counts.columns = ["Sexe", "Nombre"]
+            genre_counts["Sexe"] = genre_counts["Sexe"].map({"M": "Garçons", "F": "Filles"})
+            
+            st.bar_chart(data=genre_counts.set_index("Sexe"), use_container_width=True)
+
+            st.markdown("---")
+            st.subheader("3. Performances Moyennes par Classe")
+            
+            # Moyenne générale par classe
+            moyennes_classe = df_stats.groupby("classe")["moyenne"].mean().reset_index()
+            moyennes_classe.columns = ["Classe", "Moyenne Générale"]
+            
+            st.dataframe(
+                moyennes_classe.style.format({"Moyenne Générale": "{:.2f}"}),
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            st.bar_chart(data=moyennes_classe.set_index("Classe"), use_container_width=True)
+
+            st.markdown("---")
+            st.subheader("4. Taux de Réussite par Classe (Moyenne >= 10/20)")
+            
+            taux_reussite = []
+            for c in CLASSES:
+                df_c = df_stats[df_stats["classe"] == c]
+                tot = len(df_c)
+                if tot > 0:
+                    admis = len(df_c[df_c["moyenne"] >= 10.0])
+                    pct = (admis / tot) * 100
+                else:
+                    admis = 0
+                    pct = 0.0
+                taux_reussite.append({"Classe": c, "Total Élèves": tot, "Admis (>=10)": admis, "Taux de Réussite (%)": round(pct, 2)})
+
+            df_taux = pd.DataFrame(taux_reussite)
+            st.dataframe(
+                df_taux.style.format({"Taux de Réussite (%)": "{:.2f}%"}),
+                use_container_width=True,
+                hide_index=True
+            )
