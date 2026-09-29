@@ -380,17 +380,11 @@ def attribuer_appreciation(moyenne):
         return "Médiocre"
 
 
-def couleur_appreciation(apprec):
-    palette = {
-        "Excellent": ("#E6F4EC", COULEUR_VERT),
-        "Très-bien": ("#E6F4EC", COULEUR_VERT),
-        "Bien": ("#EFF6E9", "#4C7A2E"),
-        "Assez-bien": ("#FBF3DF", "#8A6A14"),
-        "Passable": ("#FBF0DE", "#A66A1F"),
-        "Insuffisant": ("#FCE9E5", "#B23A2E"),
-        "Médiocre": ("#FCE9E5", "#B23A2E"),
-    }
-    return palette.get(apprec, ("#EEEEEE", COULEUR_TEXTE_CARTE_DOUX))
+def obtenir_suffixe_rang(rang, sexe):
+    """ Retourne 'er' ou 'ère' si rang==1 selon le sexe, et 'ème' pour les suivants. """
+    if rang == 1:
+        return "ère" if str(sexe).upper() == "F" else "er"
+    return "ème"
 
 
 def normaliser_notes(valeur_brute):
@@ -406,9 +400,10 @@ def normaliser_notes(valeur_brute):
 
 
 def normaliser_eleve(eleve: dict) -> dict:
-    """ Force les types numériques. """
+    """ Force les types numériques et valeurs par défaut. """
     e = dict(eleve)
     e["notes"] = normaliser_notes(e.get("notes"))
+    e["sexe"] = str(e.get("sexe") or "M").upper()
     try:
         e["moyenne"] = float(e.get("moyenne") or 0.0)
     except (ValueError, TypeError):
@@ -428,16 +423,18 @@ def charger_eleves_db():
         response = supabase.table("eleves").select("*").execute()
         return [normaliser_eleve(e) for e in (response.data or [])]
     except Exception as e:
-        st.error(f"❌ Impossible de charger les élèves depuis la base de données : {e}")
+        st.warning("⚠️ Connexion momentanément indisponible avec la base de données. Veuillez rafraîchir la page.")
+        st.error(f"Détails : {e}")
         return []
 
 
-def sauvegarder_eleve_db(id_eleve, nom, prenom, classe, notes_dict):
+def sauvegarder_eleve_db(id_eleve, nom, prenom, classe, sexe, notes_dict):
     total_pts, moy_gen = calculer_bilan_eleve(notes_dict)
     data = {
         "nom": nom,
         "prenom": prenom,
         "classe": classe,
+        "sexe": sexe,
         "notes": notes_dict,
         "total_points": total_pts,
         "moyenne": moy_gen
@@ -453,10 +450,10 @@ def sauvegarder_eleve_db(id_eleve, nom, prenom, classe, notes_dict):
         return False
 
 
-def modifier_infos_eleve_db(id_eleve, nom, prenom, classe):
+def modifier_infos_eleve_db(id_eleve, nom, prenom, classe, sexe):
     try:
         supabase.table("eleves").update({
-            "nom": nom, "prenom": prenom, "classe": classe
+            "nom": nom, "prenom": prenom, "classe": classe, "sexe": sexe
         }).eq("id", id_eleve).execute()
         return True
     except Exception as e:
@@ -522,6 +519,7 @@ def archiver_bulletins_db(df_classe, annee_scolaire, trimestre, ecraser=False):
                 "nom": eleve["nom"],
                 "prenom": eleve["prenom"],
                 "classe": eleve["classe"],
+                "sexe": eleve.get("sexe", "M"),
                 "annee_scolaire": annee_scolaire,
                 "trimestre": trimestre,
                 "moyenne": float(eleve["moyenne"]),
@@ -614,13 +612,15 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
     style_cell_center = ParagraphStyle('CellCenter', parent=styles['Normal'], fontName='Helvetica', fontSize=8.5, leading=11, alignment=TA_CENTER)
     style_cell_center_bold = ParagraphStyle('CellCenterBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8.5, leading=11, alignment=TA_CENTER)
 
-    style_th = ParagraphStyle('TableauHonneur', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=12, leading=15, alignment=TA_CENTER, textColor=colors.HexColor(COULEUR_VERT))
+    # Style pour Tableau d'honneur aligné à gauche
+    style_th = ParagraphStyle('TableauHonneur', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, leading=14, alignment=TA_LEFT, textColor=colors.HexColor(COULEUR_VERT))
 
     total_eleves = len(df_classe)
 
     for i, (_, eleve_obj) in enumerate(df_classe.iterrows()):
         rang = i + 1
-        suffix_rang = "ère" if rang == 1 else "ème"
+        sexe_eleve = eleve_obj.get('sexe', 'M')
+        suffix_rang = obtenir_suffixe_rang(rang, sexe_eleve)
 
         notes_actuelles = normaliser_notes(eleve_obj.get("notes"))
 
@@ -734,21 +734,17 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
         story.append(Paragraph(f"<b>{mention}</b>", style_body_bold))
         story.append(Paragraph(f"<b>Appréciation :</b> {apprec_gen} !", style_body))
 
-        story.append(Spacer(1, 12))
-        
-        # --- Mention Tableau d'honneur si moyenne >= 15 ---
-        txt_th = "🎖️ Tableau d'honneur" if moy_gen >= 15.0 else ""
-        t_th = Table([[Paragraph(txt_th, style_th)]], colWidths=[530], rowHeights=[30])
-        t_th.setStyle(TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ]))
-        story.append(t_th)
+        # --- Mention Tableau d'honneur alignée à gauche sous l'appréciation ---
+        if moy_gen >= 15.0:
+            story.append(Spacer(1, 4))
+            story.append(Paragraph("<b>🎖️ Tableau d'honneur</b>", style_th))
+
         story.append(Spacer(1, 16))
 
+        # --- Signature du Directeur uniquement à droite ---
         t_signatures = Table(
             [[
-                Paragraph("_________________________<br/><b>Visa du Parent / Tuteur</b>", style_body),
+                Paragraph("", style_body),
                 Paragraph("_________________________<br/><b>Signature du Directeur</b>", style_header_right)
             ]],
             colWidths=[265, 265]
@@ -830,7 +826,7 @@ if mode_mobile:
         if champs_incomplets:
             st.error(f"❌ Veuillez remplir toutes les notes avant d'enregistrer. Matières incomplètes : {', '.join(champs_incomplets)}")
         else:
-            if sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], nouv_notes):
+            if sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], eleve_obj.get("sexe", "M"), nouv_notes):
                 st.success("Toutes les notes ont été enregistrées avec succès !")
                 st.rerun()
 
@@ -894,6 +890,7 @@ else:
                 st.subheader("Nouvel Élève")
                 nom = st.text_input("Nom de famille :")
                 prenom = st.text_input("Prénom :")
+                sexe = st.selectbox("Sexe :", ["M", "F"], format_func=lambda x: "Masculin (M)" if x == "M" else "Féminin (F)")
                 classe = st.selectbox("Classe :", CLASSES)
                 btn_ajouter = st.form_submit_button("Ajouter à la base", type="primary", use_container_width=True)
 
@@ -902,7 +899,7 @@ else:
                         st.error("Le nom et le prénom sont obligatoires.")
                     else:
                         notes_vides = {m: {"classe": None, "compo": None} for m in MATIERES_COEFS.keys()}
-                        if sauvegarder_eleve_db(None, nom.strip().upper(), prenom.strip().title(), classe, notes_vides):
+                        if sauvegarder_eleve_db(None, nom.strip().upper(), prenom.strip().title(), classe, sexe, notes_vides):
                             st.success("Élève inscrit avec succès !")
                             st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
@@ -918,7 +915,7 @@ else:
                 else:
                     df_affiche = df
 
-                st.dataframe(df_affiche[["id", "nom", "prenom", "classe", "moyenne", "total_points"]], use_container_width=True)
+                st.dataframe(df_affiche[["id", "nom", "prenom", "sexe", "classe", "moyenne", "total_points"]], use_container_width=True)
 
                 st.markdown("---")
                 st.subheader("✏️ Modifier / 🗑️ Supprimer un élève")
@@ -932,11 +929,13 @@ else:
                         with st.form("form_modif_eleve"):
                             nv_nom = st.text_input("Nom", value=eleve_cible["nom"])
                             nv_prenom = st.text_input("Prénom", value=eleve_cible["prenom"])
+                            idx_sexe = 0 if eleve_cible.get("sexe", "M") == "M" else 1
+                            nv_sexe = st.selectbox("Sexe", ["M", "F"], index=idx_sexe, format_func=lambda x: "Masculin (M)" if x == "M" else "Féminin (F)")
                             nv_classe = st.selectbox("Classe", CLASSES, index=CLASSES.index(eleve_cible["classe"]) if eleve_cible["classe"] in CLASSES else 0)
                             btn_modif = st.form_submit_button("Enregistrer les modifications", type="primary")
 
                         if btn_modif:
-                            if modifier_infos_eleve_db(eleve_cible["id"], nv_nom.strip().upper(), nv_prenom.strip().title(), nv_classe):
+                            if modifier_infos_eleve_db(eleve_cible["id"], nv_nom.strip().upper(), nv_prenom.strip().title(), nv_classe, nv_sexe):
                                 st.success("Informations mises à jour.")
                                 st.rerun()
 
@@ -1021,7 +1020,7 @@ else:
             if champs_incomplets:
                 st.error(f"❌ Veuillez remplir toutes les notes avant d'enregistrer. Matières incomplètes : {', '.join(champs_incomplets)}")
             else:
-                if sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], nouv_notes):
+                if sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], eleve_obj.get("sexe", "M"), nouv_notes):
                     st.success("Toutes les notes ont été mises à jour !")
                     st.rerun()
 
@@ -1052,7 +1051,7 @@ else:
             c3.metric("Meilleure moyenne", fmt_num(df_classe["moyenne"].max()))
 
             st.dataframe(
-                df_classe[["Rang", "nom", "prenom", "total_points", "moyenne", "Appréciation"]],
+                df_classe[["Rang", "nom", "prenom", "sexe", "total_points", "moyenne", "Appréciation"]],
                 use_container_width=True
             )
 
@@ -1161,12 +1160,13 @@ else:
             </tr>"""
 
         apprec_generale = attribuer_appreciation(eleve_obj['moyenne'])
-        suffix_rang = "ère" if rang_eleve == 1 else "ème"
+        sexe_eleve = eleve_obj.get('sexe', 'M')
+        suffix_rang = obtenir_suffixe_rang(rang_eleve, sexe_eleve)
         citation_apercu = CITATIONS_EDUCATIVES[idx_eleve % len(CITATIONS_EDUCATIVES)]
         moy_gen_val = float(eleve_obj['moyenne'])
         mention = "FELICITATIONS !" if moy_gen_val >= 14 else "ENCOURAGEMENTS !" if moy_gen_val >= 12 else "PEUT MIEUX FAIRE"
         
-        th_html = f'<div style="text-align: center; font-size: 16px; font-weight: bold; color: {COULEUR_VERT}; margin: 15px 0;">🎖️ Tableau d\'honneur</div>' if moy_gen_val >= 15.0 else '<div style="margin: 15px 0; height: 10px;"></div>'
+        th_html = f'<div style="font-size: 14px; font-weight: bold; color: {COULEUR_VERT}; margin-top: 6px;">🎖️ Tableau d\'honneur</div>' if moy_gen_val >= 15.0 else ''
 
         bulletin_html = textwrap.dedent(f"""
         <div style="background-color: #ffffff; color: #000000; padding: 25px; border: 1px solid #ccc; border-radius: 6px; font-family: 'Times New Roman', Times, serif; max-width: 800px; margin: auto; position: relative;">
@@ -1227,9 +1227,8 @@ else:
                 <div><b>Rang :</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {rang_eleve} {suffix_rang} / {len(df_classe)} élèves classés</div>
                 <div style="margin-top: 8px; font-weight: bold;">{mention}</div>
                 <div style="margin-top: 4px;"><b>Appréciation :</b> {apprec_generale} !</div>
+                {th_html}
             </div>
-
-            {th_html}
 
             <div style="text-align: right; margin-top: 20px; margin-bottom: 40px; font-weight: bold; font-size: 13px;">
                 Signature du directeur
@@ -1266,7 +1265,7 @@ else:
         if historique_data:
             df_hist = pd.DataFrame(historique_data)
             st.dataframe(
-                df_hist[["annee_scolaire", "trimestre", "classe", "nom", "prenom", "rang", "total_points", "moyenne", "created_at"]],
+                df_hist[["annee_scolaire", "trimestre", "classe", "nom", "prenom", "sexe", "rang", "total_points", "moyenne", "created_at"]],
                 use_container_width=True
             )
         else:
