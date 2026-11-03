@@ -850,7 +850,7 @@ if mode_mobile:
 
         btn_valider = st.form_submit_button("Enregistrer toutes les notes 💾", use_container_width=True, type="primary")
 
-    if btn_valider:
+   if btn_valider:
         st.session_state["tentative_soumission"] = True
         st.session_state["notes_temp"] = nouv_notes
         st.session_state["eleve_temp_id"] = eleve_obj["id"]
@@ -858,22 +858,28 @@ if mode_mobile:
     if st.session_state.get("tentative_soumission") and st.session_state.get("eleve_temp_id") == eleve_obj["id"]:
         notes_a_verifier = st.session_state.get("notes_temp", {})
         
+        # 1. Vérification des champs vides
         champs_vides = [
             mat for mat, v in notes_a_verifier.items() 
             if v["classe"] is None or v["compo"] is None
         ]
 
-        valeurs_hors_bornes = [
-            mat for mat, v in notes_a_verifier.items() 
-            if (v["classe"] is not None and (v["classe"] < 0 or v["classe"] > 20)) or 
-               (v["compo"] is not None and (v["compo"] < 0 or v["compo"] > 40))
-        ]
+        # 2. Vérification stricte des dépassements de notes avec identification de la matière
+        erreurs_notes = []
+        for mat, v in notes_a_verifier.items():
+            nc = v.get("classe")
+            npt = v.get("compo")
+            
+            if nc is not None and (nc < 0 or nc > 20):
+                erreurs_notes.append(f"• **{mat}** : Note de classe saisie ({nc}) supérieure à 20")
+            if npt is not None and (npt < 0 or npt > 40):
+                erreurs_notes.append(f"• **{mat}** : Note de compo saisie ({npt}) supérieure à 40")
 
         if champs_vides:
             st.error(f"❌ Impossible d'enregistrer : veuillez remplir tous les champs ! Matières incomplètes : **{', '.join(champs_vides)}**")
             st.session_state["tentative_soumission"] = False
-        elif valeurs_hors_bornes:
-            st.error(f"❌ Notes invalides détectées pour : **{', '.join(valeurs_hors_bornes)}** (la classe doit être entre 0 et 20, la compo entre 0 et 40).")
+        elif erreurs_notes:
+            st.error("❌ **Erreur de saisie :** Certaines notes dépassent les limites autorisées (Max 20 pour la classe, Max 40 pour la composition).\n\n" + "\n".join(erreurs_notes) + "\n\n*Veuillez corriger ces valeurs pour continuer.*")
             st.session_state["tentative_soumission"] = False
         else:
             st.warning(f"⚠️ Voulez-vous vraiment enregistrer les notes pour **{eleve_obj['nom']} {eleve_obj['prenom']}** ?")
