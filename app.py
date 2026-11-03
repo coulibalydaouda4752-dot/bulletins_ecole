@@ -325,6 +325,19 @@ CITATIONS_EDUCATIVES = [
 # ==========================================
 # 4. FONCTIONS DE CALCUL ET FORMATAGE
 # ==========================================
+def trouver_logo():
+    """ Cherche le logo à côté de app.py (logo.png / .jpg / .jpeg, majuscules ou minuscules). """
+    dossier = os.path.dirname(os.path.abspath(__file__))
+    try:
+        for nom in sorted(os.listdir(dossier)):
+            base, ext = os.path.splitext(nom)
+            if base.lower() == "logo" and ext.lower() in (".png", ".jpg", ".jpeg"):
+                return os.path.join(dossier, nom)
+    except OSError:
+        pass
+    return None
+
+
 def fmt_num(val, decimals=2):
     """ Formate un nombre en remplaçant le point décimal par une virgule. """
     if val is None or val == "":
@@ -638,8 +651,8 @@ def generer_pdf_bulletins_classe(df_classe, annee_scolaire, trimestre):
 
         notes_actuelles = normaliser_notes(eleve_obj.get("notes"))
 
-        LOGO_PATH = "logo.png"
-        if os.path.exists(LOGO_PATH):
+        LOGO_PATH = trouver_logo()
+        if LOGO_PATH:
             try:
                 logo_img = Image(LOGO_PATH, width=50, height=50)
             except Exception:
@@ -885,10 +898,11 @@ if mode_mobile:
                 st.rerun()
 
 else:
-    if os.path.exists("logo.png"):
+    LOGO_FICHIER = trouver_logo()
+    if LOGO_FICHIER:
         col_logo, col_nom = st.sidebar.columns([1, 2.2])
         with col_logo:
-            st.image("logo.png", use_container_width=True)
+            st.image(LOGO_FICHIER, use_container_width=True)
         with col_nom:
             st.markdown(
                 '<div style="padding-top:0.4rem; font-family:\'Lora\',serif; font-size:1.02rem; '
