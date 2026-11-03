@@ -779,15 +779,40 @@ if mode_mobile:
         st.stop()
 
     df_eleves = pd.DataFrame(eleves_data)
-    classe_sel = st.selectbox("Sélectionner la classe :", CLASSES)
+    classe_sel = st.selectbox("Sélectionner la classe :", CLASSES, key="mob_classe")
     df_filtrer = df_eleves[df_eleves["classe"] == classe_sel]
 
     if df_filtrer.empty:
         st.warning(f"Aucun élève inscrit en {classe_sel}.")
         st.stop()
 
-    eleve_options = {f"{row['nom']} {row['prenom']}": row for _, row in df_filtrer.iterrows()}
-    nom_eleve_sel = st.selectbox("Sélectionner l'élève :", list(eleve_options.keys()))
+    # Fonction pour vérifier si toutes les notes de l'élève sont remplies
+    def eleve_notes_completes(eleve):
+        notes = normaliser_notes(eleve.get("notes"))
+        if not notes:
+            return False
+        for mat in MATIERES_COEFS.keys():
+            m_data = notes.get(mat, {})
+            if m_data.get("classe") is None or m_data.get("compo") is None:
+                return False
+        return True
+
+    # Filtrer les élèves non encore saisis
+    df_restants = df_filtrer[~df_filtrer.apply(eleve_notes_completes, axis=1)]
+
+    # Choix d'affichage pour la liste mobile
+    mode_aff_mob = st.radio("Affichage :", ["À saisir", "Tous les élèves"], horizontal=True, key="mob_radio_aff")
+    df_cible = df_restants if mode_aff_mob == "À saisir" else df_filtrer
+
+    if df_cible.empty:
+        if mode_aff_mob == "À saisir":
+            st.success(f"🎉 Tous les élèves de la classe {classe_sel} ont été saisis avec succès !")
+        else:
+            st.warning(f"Aucun élève dans {classe_sel}.")
+        st.stop()
+
+    eleve_options = {f"{row['nom']} {row['prenom']}": row for _, row in df_cible.iterrows()}
+    nom_eleve_sel = st.selectbox("Sélectionner l'élève :", list(eleve_options.keys()), key="mob_eleve_sel")
     eleve_obj = eleve_options[nom_eleve_sel]
 
     notes_actuelles = normaliser_notes(eleve_obj.get("notes"))
@@ -819,16 +844,47 @@ if mode_mobile:
             st.markdown("---")
             nouv_notes[mat] = {"classe": nc, "compo": npt}
 
-        btn_valider = st.form_submit_button("Enregistrer toutes les notes 💾", use_container_width=True)
+        btn_valider = st.form_submit_button("Enregistrer toutes les notes 💾", use_container_width=True, type="primary")
 
+    # Gestion de la validation, de la confirmation et de l'enregistrement
     if btn_valider:
-        champs_incomplets = [m for m, v in nouv_notes.items() if v["classe"] is None or v["compo"] is None]
+        st.session_state["tentative_soumission"] = True
+        st.session_state["notes_temp"] = nouv_notes
+        st.session_state["eleve_temp_id"] = eleve_obj["id"]
+
+    if st.session_state.get("tentative_soumission") and st.session_state.get("eleve_temp_id") == eleve_obj["id"]:
+        notes_a_verifier = st.session_state.get("notes_temp", {})
+        
+        # Validation des champs vides et des dépassements
+        champs_incomplets = [m for m, v in notes_a_verifier.items() if v["classe"] is None or v["compo"] is None]
+        valeurs_invalides = [
+            m for m, v in notes_a_verifier.items() 
+            if (v["classe"] is not None and (v["classe"] < 0 or v["classe"] > 20)) or 
+               (v["compo"] is not None and (v["compo"] < 0 or v["compo"] > 40))
+        ]
+
         if champs_incomplets:
-            st.error(f"❌ Veuillez remplir toutes les notes avant d'enregistrer. Matières incomplètes : {', '.join(champs_incomplets)}")
+            st.error(f"❌ Erreur : Veuillez remplir toutes les notes. Matières incomplètes : {', '.join(champs_incomplets)}")
+            st.session_state["tentative_soumission"] = False
+        elif valeurs_invalides:
+            st.error(f"❌ Erreur : Notes invalides (la classe doit être entre 0 et 20, la compo entre 0 et 40) pour : {', '.join(valeurs_invalides)}")
+            st.session_state["tentative_soumission"] = False
         else:
-            if sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], eleve_obj.get("sexe", "M"), nouv_notes):
-                st.success("Toutes les notes ont été enregistrées avec succès !")
-                st.rerun()
+            # Message de confirmation avant enregistrement
+            st.warning(f"⚠️ Voulez-vous vraiment enregistrer les notes pour **{eleve_obj['nom']} {eleve_obj['prenom']}** ?")
+            col_c1, col_c2 = st.columns(2)
+            with col_c1:
+                if st.button("✅ Oui, confirmer", use_container_width=True, type="primary"):
+                    if sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], eleve_obj.get("sexe", "M"), notes_a_verifier):
+                        st.success("✅ Notes enregistrées avec succès ! Passage à l'élève suivant.")
+                        st.session_state["tentative_soumission"] = False
+                        st.session_state.pop("notes_temp", None)
+                        st.session_state.pop("eleve_temp_id", None)
+                        st.rerun()
+            with col_c2:
+                if st.button("❌ Annuler", use_container_width=True):
+                    st.session_state["tentative_soumission"] = False
+                    st.rerun()
 
 else:
     if os.path.exists("logo.png"):
