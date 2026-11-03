@@ -850,7 +850,7 @@ if mode_mobile:
 
         btn_valider = st.form_submit_button("Enregistrer toutes les notes 💾", use_container_width=True, type="primary")
 
-   if btn_valider:
+    if btn_valider:
         st.session_state["tentative_soumission"] = True
         st.session_state["notes_temp"] = nouv_notes
         st.session_state["eleve_temp_id"] = eleve_obj["id"]
