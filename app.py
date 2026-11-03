@@ -815,6 +815,12 @@ if mode_mobile:
     nom_eleve_sel = st.selectbox("Sélectionner l'élève :", list(eleve_options.keys()), key="mob_eleve_sel")
     eleve_obj = eleve_options[nom_eleve_sel]
 
+    # Si on change d'élève, on nettoie les anciennes valeurs temporaires pour vider les champs
+    if st.session_state.get("dernier_eleve_saisi") != eleve_obj["id"]:
+        st.session_state["dernier_eleve_saisi"] = eleve_obj["id"]
+        st.session_state.pop("notes_temp", None)
+        st.session_state["tentative_soumission"] = False
+
     notes_actuelles = normaliser_notes(eleve_obj.get("notes"))
 
     st.subheader(f"Élève : {eleve_obj['nom']} {eleve_obj['prenom']}")
@@ -824,18 +830,20 @@ if mode_mobile:
 
         for mat, coef in MATIERES_COEFS.items():
             m_data = notes_actuelles.get(mat, {})
-            val_cl = float(m_data.get("classe")) if m_data.get("classe") is not None else None
-            val_co = float(m_data.get("compo")) if m_data.get("compo") is not None else None
+            # Si l'élève n'a pas encore de notes, on met None pour vider les champs
+            val_cl = float(m_data.get("classe")) if m_data.get("classe") is not None else 0.0
+            val_co = float(m_data.get("compo")) if m_data.get("compo") is not None else 0.0
 
             st.markdown(f"**{mat}** *(Coef: {coef})*")
             col_cl, col_co = st.columns(2)
 
             with col_cl:
-                nc = st.number_input("Classe /20", min_value=0.0, max_value=20.0, value=val_cl, step=0.5, key=f"m_cl_{mat}")
+                # Utilisation de valeurs neutres ou vides si l'élève est nouveau
+                nc = st.number_input("Classe /20", min_value=0.0, max_value=20.0, value=val_cl if m_data.get("classe") is not None else 0.0, step=0.5, key=f"m_cl_{mat}")
             with col_co:
-                npt = st.number_input("Compo /40", min_value=0.0, max_value=40.0, value=val_co, step=0.5, key=f"m_cp_{mat}")
+                npt = st.number_input("Compo /40", min_value=0.0, max_value=40.0, value=val_co if m_data.get("compo") is not None else 0.0, step=0.5, key=f"m_cp_{mat}")
 
-            if nc is not None and npt is not None:
+            if m_data.get("classe") is not None and m_data.get("compo") is not None:
                 moy_m = calculer_moyenne_matiere(nc, npt)
                 st.caption(f"Moyenne : {fmt_num(moy_m)} / 20")
             else:
@@ -846,7 +854,6 @@ if mode_mobile:
 
         btn_valider = st.form_submit_button("Enregistrer toutes les notes 💾", use_container_width=True, type="primary")
 
-    # Gestion de la validation, de la confirmation et de l'enregistrement
     if btn_valider:
         st.session_state["tentative_soumission"] = True
         st.session_state["notes_temp"] = nouv_notes
@@ -855,7 +862,6 @@ if mode_mobile:
     if st.session_state.get("tentative_soumission") and st.session_state.get("eleve_temp_id") == eleve_obj["id"]:
         notes_a_verifier = st.session_state.get("notes_temp", {})
         
-        # Validation des champs vides et des dépassements
         champs_incomplets = [m for m, v in notes_a_verifier.items() if v["classe"] is None or v["compo"] is None]
         valeurs_invalides = [
             m for m, v in notes_a_verifier.items() 
@@ -867,16 +873,15 @@ if mode_mobile:
             st.error(f"❌ Erreur : Veuillez remplir toutes les notes. Matières incomplètes : {', '.join(champs_incomplets)}")
             st.session_state["tentative_soumission"] = False
         elif valeurs_invalides:
-            st.error(f"❌ Erreur : Notes invalides (la classe doit être entre 0 et 20, la compo entre 0 et 40) pour : {', '.join(valeurs_invalides)}")
+            st.error(f"❌ Erreur : Notes invalides (la classe doit être entre 0 et 20, la compo entre 0 et 40).")
             st.session_state["tentative_soumission"] = False
         else:
-            # Message de confirmation avant enregistrement
             st.warning(f"⚠️ Voulez-vous vraiment enregistrer les notes pour **{eleve_obj['nom']} {eleve_obj['prenom']}** ?")
             col_c1, col_c2 = st.columns(2)
             with col_c1:
                 if st.button("✅ Oui, confirmer", use_container_width=True, type="primary"):
                     if sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], eleve_obj.get("sexe", "M"), notes_a_verifier):
-                        st.success("✅ Notes enregistrées avec succès ! Passage à l'élève suivant.")
+                        st.success("✅ Notes enregistrées avec succès !")
                         st.session_state["tentative_soumission"] = False
                         st.session_state.pop("notes_temp", None)
                         st.session_state.pop("eleve_temp_id", None)
