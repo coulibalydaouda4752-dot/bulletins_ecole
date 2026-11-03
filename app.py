@@ -387,6 +387,20 @@ def obtenir_suffixe_rang(rang, sexe):
     return "ème"
 
 
+def verifier_limites_notes(notes_dict):
+    """ Retourne la liste des erreurs (matière + note fautive) si une note sort des limites :
+    classe entre 0 et 20, compo entre 0 et 40. Liste vide = tout est valide. """
+    erreurs = []
+    for mat, v in notes_dict.items():
+        nc = v.get("classe")
+        npt = v.get("compo")
+        if nc is not None and (nc < 0 or nc > 20):
+            erreurs.append(f"• **{mat}** : note de classe **{fmt_num(nc)}** (doit être comprise entre 0 et 20)")
+        if npt is not None and (npt < 0 or npt > 40):
+            erreurs.append(f"• **{mat}** : note de composition **{fmt_num(npt)}** (doit être comprise entre 0 et 40)")
+    return erreurs
+
+
 def normaliser_notes(valeur_brute):
     """ Garantit que 'notes' est toujours un dict Python exploitable. """
     if isinstance(valeur_brute, dict):
@@ -835,9 +849,9 @@ if mode_mobile:
 
             with col_cl:
                 # Utilisation de clés dynamiques par élève pour vider les champs lors du changement d'élève
-                nc = st.number_input("Classe /20", min_value=0.0, max_value=20.0, value=val_cl, step=0.5, key=f"m_cl_{mat}_{eleve_obj['id']}")
+                nc = st.number_input("Classe /20", value=val_cl, step=0.5, key=f"m_cl_{mat}_{eleve_obj['id']}")
             with col_co:
-                npt = st.number_input("Compo /40", min_value=0.0, max_value=40.0, value=val_co, step=0.5, key=f"m_cp_{mat}_{eleve_obj['id']}")
+                npt = st.number_input("Compo /40", value=val_co, step=0.5, key=f"m_cp_{mat}_{eleve_obj['id']}")
 
             if nc is not None and npt is not None:
                 moy_m = calculer_moyenne_matiere(nc, npt)
@@ -857,21 +871,13 @@ if mode_mobile:
             if v["classe"] is None or v["compo"] is None
         ]
 
-        # 2. Vérification stricte des dépassements de notes avec identification de la matière
-        erreurs_notes = []
-        for mat, v in nouv_notes.items():
-            nc = v.get("classe")
-            npt = v.get("compo")
-            
-            if nc is not None and (nc < 0 or nc > 20):
-                erreurs_notes.append(f"• **{mat}** : Note de classe ({nc}) > 20")
-            if npt is not None and (npt < 0 or npt > 40):
-                erreurs_notes.append(f"• **{mat}** : Note de compo ({npt}) > 40")
+        # 2. Vérification stricte des dépassements avec identification de la matière
+        erreurs_notes = verifier_limites_notes(nouv_notes)
 
-        if champs_vides:
+        if erreurs_notes:
+            st.error("❌ **Note hors limites — enregistrement bloqué.** Veuillez revérifier et corriger la saisie :\n\n" + "\n".join(erreurs_notes))
+        elif champs_vides:
             st.error(f"❌ **Champs manquants :** Veuillez remplir toutes les notes.\nMatières incomplètes : **{', '.join(champs_vides)}**")
-        elif erreurs_notes:
-            st.error("❌ **Erreur de saisie :** Certaines notes dépassent les limites autorisées (Max 20 pour la classe, Max 40 pour la composition).\n\n" + "\n".join(erreurs_notes))
         else:
             # Enregistrement direct et fluide dans Supabase
             if sauvegarder_eleve_db(eleve_obj["id"], eleve_obj["nom"], eleve_obj["prenom"], eleve_obj["classe"], eleve_obj.get("sexe", "M"), nouv_notes):
@@ -1034,16 +1040,19 @@ else:
                         with col_mat:
                             st.markdown(f"**{mat}** *(Coef {coef})*")
                         with col_cl:
-                            nc = st.number_input(f"Classe /20 ({mat})", min_value=0.0, max_value=20.0, value=v_cl, step=0.5, label_visibility="collapsed")
+                            nc = st.number_input(f"Classe /20 ({mat})", value=v_cl, step=0.5, label_visibility="collapsed", key=f"d_cl_{mat}_{eleve_courant['id']}")
                         with col_co:
-                            npt = st.number_input(f"Compo /40 ({mat})", min_value=0.0, max_value=40.0, value=v_co, step=0.5, label_visibility="collapsed")
+                            npt = st.number_input(f"Compo /40 ({mat})", value=v_co, step=0.5, label_visibility="collapsed", key=f"d_cp_{mat}_{eleve_courant['id']}")
 
                         nouvelles_notes[mat] = {"classe": nc, "compo": npt}
 
                     btn_sauvegarder = st.form_submit_button("Enregistrer les notes 💾", type="primary")
 
                     if btn_sauvegarder:
-                        if sauvegarder_eleve_db(eleve_courant["id"], eleve_courant["nom"], eleve_courant["prenom"], eleve_courant["classe"], eleve_courant.get("sexe", "M"), nouvelles_notes):
+                        erreurs_notes = verifier_limites_notes(nouvelles_notes)
+                        if erreurs_notes:
+                            st.error("❌ **Note hors limites — enregistrement bloqué.** Veuillez revérifier et corriger la saisie :\n\n" + "\n".join(erreurs_notes))
+                        elif sauvegarder_eleve_db(eleve_courant["id"], eleve_courant["nom"], eleve_courant["prenom"], eleve_courant["classe"], eleve_courant.get("sexe", "M"), nouvelles_notes):
                             st.success("Notes enregistrées avec succès !")
                             st.rerun()
 
