@@ -377,7 +377,7 @@ def attribuer_appreciation(moyenne):
     elif moyenne >= 8:
         return "Insuffisant"
     else:
-        return "Médiocre"
+        return "Très-Insuffisant"
 
 
 def obtenir_suffixe_rang(rang, sexe):
